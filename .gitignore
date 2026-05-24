@@ -1,0 +1,25 @@
+# Python
+venv/
+.venv/
+env/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Node/Frontend
+node_modules/
+dist/
+.eslintcache
+.next/
+out/
+build/
+
+# IDE/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
