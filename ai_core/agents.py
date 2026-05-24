@@ -38,20 +38,31 @@ def python_repl_tool(code: str) -> str:
     """
     stdout_capture = io.StringIO()
     try:
-        # Suppress pydantic deprecation warning monkey-patch that breaks
-        # matplotlib inside exec() on Python 3.13+ (skip_file_prefixes clash).
+        # Pydantic monkey-patches warnings.warn with a filtered_warn() that
+        # does NOT accept Python 3.13's new `skip_file_prefixes` kwarg.
+        # This crashes matplotlib (and other libs) when they call
+        # warnings.warn(..., skip_file_prefixes=...).
+        # Fix: temporarily restore the real C-level warn during execution.
         import warnings
-        warnings.filterwarnings("ignore")
+        import _warnings
 
-        # Provide a clean global namespace with builtins so the executed
-        # code can import anything it needs.
+        patched_warn = warnings.warn          # save pydantic's version
+        warnings.warn = _warnings.warn        # restore the real one
+
         exec_globals = {"__builtins__": __builtins__}
 
         with contextlib.redirect_stdout(stdout_capture):
             exec(code, exec_globals)  # noqa: S102
+
+        warnings.warn = patched_warn          # restore pydantic's version
         output = stdout_capture.getvalue()
         return output if output else "Code executed successfully (no stdout output)."
     except Exception as e:
+        # Make sure we restore even on failure
+        try:
+            warnings.warn = patched_warn  # type: ignore[possibly-undefined]
+        except NameError:
+            pass
         return f"Error during execution: {type(e).__name__}: {e}"
 
 
