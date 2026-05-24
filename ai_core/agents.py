@@ -7,8 +7,12 @@ Defines three specialized agents:
   3. visualizer_agent — Matplotlib visualization and file output
 """
 
+import io
+import contextlib
+
 from crewai import Agent
-from crewai_tools import ScrapeWebsiteTool, CodeInterpreterTool
+from crewai.tools import tool
+from crewai_tools import ScrapeWebsiteTool
 
 from config import fast_llm, smart_llm
 from schemas import EpidemicPrediction
@@ -18,7 +22,37 @@ from schemas import EpidemicPrediction
 # Tool instances
 # ---------------------------------------------------------------------------
 scrape_tool = ScrapeWebsiteTool()          # OSINT web scraping capability
-code_repl_tool = CodeInterpreterTool()     # Python REPL for dynamic code execution
+
+
+@tool("python_repl")
+def python_repl_tool(code: str) -> str:
+    """Execute a Python code snippet and return its stdout output.
+
+    Use this tool to run self-contained Python scripts — for example,
+    generating matplotlib plots and saving them to disk.  The code runs
+    in the current process so it has access to all installed packages
+    (matplotlib, pandas, os, etc.).
+
+    Args:
+        code: A complete, self-contained Python script as a string.
+    """
+    stdout_capture = io.StringIO()
+    try:
+        # Suppress pydantic deprecation warning monkey-patch that breaks
+        # matplotlib inside exec() on Python 3.13+ (skip_file_prefixes clash).
+        import warnings
+        warnings.filterwarnings("ignore")
+
+        # Provide a clean global namespace with builtins so the executed
+        # code can import anything it needs.
+        exec_globals = {"__builtins__": __builtins__}
+
+        with contextlib.redirect_stdout(stdout_capture):
+            exec(code, exec_globals)  # noqa: S102
+        output = stdout_capture.getvalue()
+        return output if output else "Code executed successfully (no stdout output)."
+    except Exception as e:
+        return f"Error during execution: {type(e).__name__}: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +124,7 @@ visualizer_agent = Agent(
         "outputs into clear, actionable charts that are consumed by epidemiologists and "
         "government health officials. Your plots have been featured in WHO Situation Reports."
     ),
-    tools=[code_repl_tool],
+    tools=[python_repl_tool],
     llm=fast_llm,
     verbose=True,
     allow_delegation=False,

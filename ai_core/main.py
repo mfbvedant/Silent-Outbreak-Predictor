@@ -71,7 +71,7 @@ analyze_task = Task(
 visualize_task = Task(
     description=(
         "You will receive a validated EpidemicPrediction Pydantic object from the Analyst.\n\n"
-        "Write and execute a self-contained Python script that:\n"
+        "Write a self-contained Python script that:\n"
         "  1. Imports matplotlib.pyplot and os.\n"
         "  2. Reads the disease name, region, and confidence_score from the prediction.\n"
         "  3. Creates a publication-quality bar plot:\n"
@@ -84,11 +84,16 @@ visualize_task = Task(
         "         ../data_outputs/outbreak_risk_{{run_id}}.png\n"
         "     Use os.makedirs to ensure the directory exists before saving.\n"
         "  5. Prints confirmation of the saved file path.\n\n"
-        "Do NOT display the plot interactively — only save it to disk."
+        "CRITICAL: DO NOT output the raw Python code as your final answer. "
+        "You MUST pass the code into the `python_repl` tool to execute it. "
+        "Your task is only complete when the tool successfully runs and saves "
+        "the image to `../data_outputs/outbreak_risk_{{run_id}}.png`. "
+        "Your final output should just be a confirmation string that the file exists."
     ),
     expected_output=(
-        "Confirmation that the bar plot has been generated and saved to "
-        "'../data_outputs/outbreak_risk_{run_id}.png'."
+        "A short confirmation string such as: "
+        "'Plot saved successfully to ../data_outputs/outbreak_risk_{run_id}.png'. "
+        "Do NOT include any Python code in the final output."
     ),
     agent=visualizer_agent,
     context=[analyze_task],

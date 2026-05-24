@@ -5,4 +5,3 @@ pydantic
 matplotlib
 pandas
 python-dotenv
-langchain-openai
