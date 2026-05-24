@@ -49,6 +49,11 @@ def python_repl_tool(code: str) -> str:
         patched_warn = warnings.warn          # save pydantic's version
         warnings.warn = _warnings.warn        # restore the real one
 
+        # Force non-interactive matplotlib backend to prevent tkinter from
+        # spinning up in a background thread (crashes uvicorn on cleanup).
+        import matplotlib
+        matplotlib.use("Agg")
+
         exec_globals = {"__builtins__": __builtins__}
 
         with contextlib.redirect_stdout(stdout_capture):
