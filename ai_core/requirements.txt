@@ -1,0 +1,9 @@
+crewai
+crewai[tools]
+scrapegraphai
+pydantic
+matplotlib
+pandas
+python-dotenv
+langchain-google-genai
+langchain-anthropic
