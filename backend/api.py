@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 try:
@@ -18,7 +18,7 @@ except Exception as exc:
 app = FastAPI(title="Silent Outbreak Predictor API", version="0.1.0")
 
 jobs = {}
-DATA_OUTPUT_DIR = Path(__file__).resolve().parent / "data_outputs"
+DATA_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data_outputs"
 DATA_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 logging.basicConfig(
@@ -169,7 +169,7 @@ async def heatmap(run_id: str):
         logger.warning("Heatmap requested before completion for job %s", run_id)
         raise HTTPException(status_code=409, detail="Run not complete yet")
 
-    heatmap_path = DATA_OUTPUT_DIR / f"{run_id}.png"
+    heatmap_path = DATA_OUTPUT_DIR / f"outbreak_risk_{run_id}.png"
     if not heatmap_path.exists():
         logger.warning(
             "Heatmap file missing for job %s at %s", run_id, heatmap_path
@@ -177,6 +177,4 @@ async def heatmap(run_id: str):
         raise HTTPException(status_code=404, detail="Heatmap file not found")
 
     logger.info("Serving heatmap for job %s from %s", run_id, heatmap_path)
-    return StreamingResponse(
-        heatmap_path.open("rb"), media_type="image/png"
-    )
+    return FileResponse(path=heatmap_path, media_type="image/png")
