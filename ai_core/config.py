@@ -1,18 +1,29 @@
+"""
+config.py — LLM configuration for the Silent Outbreak Predictor pipeline.
+
+Exposes two ChatOpenAI wrappers:
+  • fast_llm  — gpt-4o-mini  (low-latency, cost-efficient tasks)
+  • smart_llm — gpt-4o       (complex reasoning tasks)
+
+API key is loaded from OPENAI_API_KEY in the environment / .env file.
+"""
+
 import os
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 
-# Load environment variables (e.g. GEMINI_API_KEY / GOOGLE_API_KEY, ANTHROPIC_API_KEY)
+# Load environment variables (expects OPENAI_API_KEY)
 load_dotenv()
 
-# Configure the LLM wrappers
-flash_llm = ChatGoogleGenerativeAI(
-    model="gemini-3.5-flash",
-    google_api_key=os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+# ---------------------------------------------------------------------------
+# LLM wrappers
+# ---------------------------------------------------------------------------
+fast_llm = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0.1,
 )
 
-opus_llm = ChatAnthropic(
-    model_name="claude-3-opus-20240229",
-    api_key=os.getenv("ANTHROPIC_API_KEY")
+smart_llm = ChatOpenAI(
+    model="gpt-4o",
+    temperature=0.2,
 )

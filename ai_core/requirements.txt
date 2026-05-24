@@ -5,5 +5,4 @@ pydantic
 matplotlib
 pandas
 python-dotenv
-langchain-google-genai
-langchain-anthropic
+langchain-openai

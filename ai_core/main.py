@@ -1,121 +1,127 @@
-import os
+"""
+main.py — Silent Outbreak Predictor pipeline orchestrator.
+
+Composes the CrewAI sequential pipeline:
+  gather_task  →  analyze_task  →  visualize_task
+
+Usage:
+    python main.py              # runs with default run_id "test_001"
+    python main.py <run_id>     # runs with a custom run_id
+"""
+
 import sys
-from crewai import Agent, Task, Crew, Process
-from crewai_tools import ScrapegraphScrapeTool
-from config import flash_llm, opus_llm
+
+from crewai import Crew, Task, Process
+
+from agents import gatherer_agent, analyst_agent, visualizer_agent
 from schemas import EpidemicPrediction
-from crewai.tools import tool
-import matplotlib.pyplot as plt
 
-# Define custom tool for visualization
-@tool("generate_outbreak_visualization")
-def generate_outbreak_visualization(disease: str, region: str, confidence_score: float, run_id: str) -> str:
-    """
-    Generates a bar plot of the confidence score for a disease outbreak and saves it.
-    
-    Parameters:
-    - disease (str): Name of the disease.
-    - region (str): Geographic region.
-    - confidence_score (float): Outbreak confidence score between 0.0 and 1.0.
-    - run_id (str): Run ID for tracking.
-    """
-    # Ensure data_outputs directory exists in the parent folder
-    output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data_outputs"))
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Generate the bar plot
-    plt.figure(figsize=(8, 5))
-    plt.bar([f"{disease}\n({region})"], [confidence_score], color="#e63946", edgecolor="#1d3557", width=0.4)
-    plt.ylim(0, 1.0)
-    plt.title(f"Epidemic Risk Analysis (Run: {run_id})", fontsize=14, fontweight="bold", pad=15)
-    plt.ylabel("Outbreak Confidence Score", fontsize=12)
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    
-    # Save the plot
-    output_path = os.path.join(output_dir, f"outbreak_risk_{run_id}.png")
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    return f"Plot successfully generated and saved to: {output_path}"
 
-# OSINT Gatherer Agent
-osint_gatherer = Agent(
-    role="OSINT Gatherer",
-    goal="Monitor health bulletins and news aggregators in Pune and Maharashtra region to extract recent respiratory illness events.",
-    backstory="You are a health intelligence OSINT Gatherer. You specialize in scanning official municipal health bulletins and news reports to semantically extract disease names, locations, and dates.",
-    tools=[ScrapegraphScrapeTool()],
-    llm=flash_llm,
-    verbose=True
+# ---------------------------------------------------------------------------
+# Task definitions
+# ---------------------------------------------------------------------------
+
+gather_task = Task(
+    description=(
+        "Scan official municipal health bulletins (Pune Municipal Corporation, IDSP "
+        "Maharashtra), WHO SEARO feeds, and reputable news aggregators for any respiratory "
+        "or infectious disease events reported in the Pune and broader Maharashtra region "
+        "over the last 7 days.\n\n"
+        "For every event you find, extract:\n"
+        "  • Disease / pathogen name\n"
+        "  • Affected geographic location (city, district, or state)\n"
+        "  • Date or date range of the reported incident\n"
+        "  • A brief summary of the report\n\n"
+        "Ignore advertisements, opinion editorials, and unrelated news. Focus strictly on "
+        "verified health data sources."
+    ),
+    expected_output=(
+        "A structured raw-text summary listing each extracted disease event with its "
+        "disease name, location, date(s), and a one-line synopsis of the source report."
+    ),
+    agent=gatherer_agent,
 )
 
-# Epidemiologist Analyst Agent
-epidemiologist_analyst = Agent(
-    role="Epidemiologist Analyst",
-    goal="Analyze respiratory illness data, calculate confidence scores based on keyword severity, and predict outbreak events.",
-    backstory="You are a Senior Epidemiologist. You parse raw disease reports, evaluate illness severity and keyword frequencies (e.g. 'severe', 'acute', 'epidemic', 'H1N1', 'influenza'), and produce structured, validated outbreak predictions.",
-    llm=opus_llm,
-    verbose=True
+analyze_task = Task(
+    description=(
+        "You will receive a raw-text summary of disease events from the OSINT Gatherer.\n\n"
+        "For each event, perform the following analysis:\n"
+        "  1. Cross-reference the disease name against known epidemic indicators.\n"
+        "  2. Assess keyword severity — flag terms such as 'severe', 'outbreak', 'acute', "
+        "'epidemic', 'mortality', 'H1N1', 'influenza', 'respiratory distress'.\n"
+        "  3. Calculate a mathematically grounded confidence_score on a 0.0–100.0 scale.\n"
+        "     Each keyword hit, geographic spread factor, and temporal clustering signal "
+        "     should contribute a traceable delta to the final score.\n"
+        "  4. Write explainable_reasoning that maps every score component back to its "
+        "     source evidence.\n\n"
+        "Produce a single, fully validated EpidemicPrediction object. Assign a unique "
+        "event_id (integer) based on the current run."
+    ),
+    expected_output=(
+        "A validated EpidemicPrediction JSON object with fields: event_id (int), "
+        "disease (str), region (str), confidence_score (float 0.0–100.0), and "
+        "explainable_reasoning (str)."
+    ),
+    agent=analyst_agent,
+    context=[gather_task],
+    output_pydantic=EpidemicPrediction,
+    guardrail_max_retries=3,
 )
 
-# Visualization Engineer Agent
-visualization_engineer = Agent(
-    role="Visualization Engineer",
-    goal="Generate outbreak risk visualizations from validated epidemiologist predictions.",
-    backstory="You are a data visualization engineer. You read validated outbreak predictions (Pydantic objects) and create clear, publication-quality bar plots of outbreak risk scores.",
-    tools=[generate_outbreak_visualization],
-    llm=flash_llm,
-    verbose=True
+visualize_task = Task(
+    description=(
+        "You will receive a validated EpidemicPrediction Pydantic object from the Analyst.\n\n"
+        "Write and execute a self-contained Python script that:\n"
+        "  1. Imports matplotlib.pyplot and os.\n"
+        "  2. Reads the disease name, region, and confidence_score from the prediction.\n"
+        "  3. Creates a publication-quality bar plot:\n"
+        "     • X-axis label: '<Disease> (<Region>)'\n"
+        "     • Y-axis: 'Outbreak Confidence Score' (range 0–100)\n"
+        "     • Bar color: #e63946 with edge color #1d3557\n"
+        "     • Title: 'Epidemic Risk Analysis — Run: {{run_id}}'\n"
+        "     • Grid lines on the Y-axis for readability.\n"
+        "  4. Saves the figure to EXACTLY this path:\n"
+        "         ../data_outputs/outbreak_risk_{{run_id}}.png\n"
+        "     Use os.makedirs to ensure the directory exists before saving.\n"
+        "  5. Prints confirmation of the saved file path.\n\n"
+        "Do NOT display the plot interactively — only save it to disk."
+    ),
+    expected_output=(
+        "Confirmation that the bar plot has been generated and saved to "
+        "'../data_outputs/outbreak_risk_{run_id}.png'."
+    ),
+    agent=visualizer_agent,
+    context=[analyze_task],
 )
 
-def create_crew(run_id: str) -> Crew:
-    # Task 1: Gather OSINT Data
-    gather_task = Task(
-        description=(
-            "Monitor official municipal health bulletins (e.g. Pune Municipal Corporation website) and news aggregators "
-            "in the Pune and Maharashtra region for respiratory illnesses reported over the last 7 days. "
-            "Semantically extract disease names, locations, and dates from the content."
-        ),
-        expected_output="A structured summary of disease name, location, and dates extracted from the health reports.",
-        agent=osint_gatherer
-    )
 
-    # Task 2: Analyze and Output structured prediction
-    analyze_task = Task(
-        description=(
-            "Analyze the gathered health data. Calculate a confidence score between 0.0 and 1.0 based on keyword severity "
-            "(e.g., terms like 'severe', 'outbreak', 'epidemic', 'critical', 'respiratory' raise the confidence). "
-            "Map the analysis to the EpidemicPrediction model for run_id: {run_id}."
-        ),
-        expected_output="A validated EpidemicPrediction schema object.",
-        agent=epidemiologist_analyst,
-        output_pydantic=EpidemicPrediction,
-        guardrail_max_retries=3
-    )
+# ---------------------------------------------------------------------------
+# Pipeline orchestrator
+# ---------------------------------------------------------------------------
 
-    # Task 3: Visualize predictions
-    visualize_task = Task(
-        description=(
-            "Read the validated Pydantic object from the previous task. "
-            "Extract the disease, region, confidence_score, and use the generate_outbreak_visualization tool to generate a bar plot. "
-            "Ensure you pass the run_id '{run_id}' to the tool so the image is saved exactly to '../data_outputs/outbreak_risk_{run_id}.png'."
-        ),
-        expected_output="Confirmation that the bar plot has been generated and saved.",
-        agent=visualization_engineer
-    )
-
-    return Crew(
-        agents=[osint_gatherer, epidemiologist_analyst, visualization_engineer],
+def run_pipeline(run_id: str):
+    """Assemble and kick off the three-agent sequential crew."""
+    crew = Crew(
+        agents=[gatherer_agent, analyst_agent, visualizer_agent],
         tasks=[gather_task, analyze_task, visualize_task],
         process=Process.sequential,
-        verbose=True
+        verbose=True,
     )
 
-if __name__ == "__main__":
-    # Extract run_id from command line arguments or default to 'test_run'
-    run_id = sys.argv[1] if len(sys.argv) > 1 else "test_run"
-    
-    # Initialize and kickoff the crew
-    crew = create_crew(run_id)
     result = crew.kickoff(inputs={"run_id": run_id})
-    print("\n--- Kickoff Result ---")
+
+    print("\n" + "=" * 60)
+    print(f"  Pipeline complete — run_id: {run_id}")
+    print("=" * 60)
     print(result)
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+if __name__ == "__main__":
+    test_run_id = sys.argv[1] if len(sys.argv) > 1 else "test_001"
+    run_pipeline(test_run_id)
