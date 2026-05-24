@@ -4,7 +4,7 @@ import time
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -96,6 +96,7 @@ async def _run_analysis_job(run_id: str):
 
 class AnalyzeResponse(BaseModel):
     run_id: str
+    status: str
 
 
 class StatusResponse(BaseModel):
@@ -129,17 +130,17 @@ async def generic_exception_handler(request: Request, exc: Exception):
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
-async def analyze():
+async def analyze(background_tasks: BackgroundTasks):
     run_id = str(uuid.uuid4())
     jobs[run_id] = {
-        "status": "running",
+        "status": "processing",
         "started_at": time.time(),
         "confidence_score": None,
         "explainable_reasoning": None,
     }
-    asyncio.create_task(_run_analysis_job(run_id))
+    background_tasks.add_task(_run_analysis_job, run_id)
     logger.info("Created new analysis job %s and queued background work", run_id)
-    return {"run_id": run_id}
+    return {"run_id": run_id, "status": "processing"}
 
 
 @app.get("/api/status/{run_id}", response_model=StatusResponse)
@@ -148,15 +149,6 @@ async def status(run_id: str):
     if job is None:
         logger.warning("Status requested for unknown job %s", run_id)
         raise HTTPException(status_code=404, detail="run_id not found")
-
-    elapsed = time.time() - job["started_at"]
-    if job["status"] != "completed" and elapsed > 5:
-        job["status"] = "completed"
-        job["confidence_score"] = 0.92
-        job["explainable_reasoning"] = (
-            "Regional signals indicate elevated outbreak risk in high-density zones with correlated supply chain and mobility disruption."
-        )
-        logger.info("Job %s marked completed", run_id)
 
     response = {
         "run_id": run_id,
