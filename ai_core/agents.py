@@ -7,6 +7,9 @@ Defines three specialized agents:
   3. visualizer_agent — Matplotlib visualization and file output
 """
 
+import matplotlib
+matplotlib.use('Agg')
+
 import io
 import contextlib
 
