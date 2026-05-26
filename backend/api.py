@@ -1,12 +1,20 @@
+import io
+import sys
+
+# Force UTF-8 for stdout/stderr — CrewAI's printer uses emojis that crash
+# on Windows' default cp1252 encoding.
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 import asyncio
 import logging
-import sys
 import time
 import uuid
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,9 +29,17 @@ except Exception as exc:
 
 app = FastAPI(title="Silent Outbreak Predictor API", version="0.1.0")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 jobs = {}
 DATA_OUTPUT_DIR = Path(__file__).resolve().parent.parent / "data_outputs"
 DATA_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -41,9 +57,38 @@ def _invoke_run_pipeline(run_id: str):
         return None
 
     try:
-        return run_pipeline(run_id)
+        crew_result = run_pipeline(run_id)
     except TypeError:
-        return run_pipeline()
+        crew_result = run_pipeline()
+
+    # Parse the CrewAI result into a plain dict
+    parsed = {}
+    if crew_result is not None:
+        # CrewAI's crew.kickoff() returns the LAST task's output (visualizer).
+        # The EpidemicPrediction pydantic data lives in an intermediate task.
+        # Search all task outputs for the pydantic model first.
+        if hasattr(crew_result, 'tasks_output') and crew_result.tasks_output:
+            for task_out in crew_result.tasks_output:
+                if hasattr(task_out, 'pydantic') and task_out.pydantic:
+                    obj = task_out.pydantic
+                    parsed = obj.model_dump() if hasattr(obj, 'model_dump') else obj.dict()
+                    break
+                elif hasattr(task_out, 'json_dict') and task_out.json_dict:
+                    parsed = task_out.json_dict
+                    break
+
+        # Fallback: check the top-level crew result
+        if not parsed:
+            if hasattr(crew_result, 'pydantic') and crew_result.pydantic:
+                obj = crew_result.pydantic
+                parsed = obj.model_dump() if hasattr(obj, 'model_dump') else obj.dict()
+            elif hasattr(crew_result, 'json_dict') and crew_result.json_dict:
+                parsed = crew_result.json_dict
+            elif hasattr(crew_result, 'raw'):
+                parsed = {"explainable_reasoning": str(crew_result.raw)}
+            elif isinstance(crew_result, dict):
+                parsed = crew_result
+    return parsed
 
 
 def _update_job_from_result(run_id: str, result: dict | None):
@@ -54,10 +99,12 @@ def _update_job_from_result(run_id: str, result: dict | None):
     if result is None:
         result = {}
 
+    job["disease"] = result.get("disease", "Unknown")
+    job["region"] = result.get("region", "Unknown")
     job["confidence_score"] = result.get("confidence_score", 0.92)
     job["explainable_reasoning"] = result.get(
         "explainable_reasoning",
-        "Regional signals indicate elevated outbreak risk in high-density zones with correlated supply chain and mobility disruption.",
+        "Regional signals indicate elevated outbreak risk in high-density zones.",
     )
     job["status"] = "completed"
 
@@ -106,6 +153,8 @@ class AnalyzeResponse(BaseModel):
 class StatusResponse(BaseModel):
     run_id: str
     status: str
+    disease: str | None = None
+    region: str | None = None
     confidence_score: float | None = None
     explainable_reasoning: str | None = None
 
@@ -133,12 +182,23 @@ async def generic_exception_handler(request: Request, exc: Exception):
     )
 
 
+@app.get("/api/health")
+async def health():
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "pipeline_available": run_pipeline is not None,
+    }
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(background_tasks: BackgroundTasks):
     run_id = str(uuid.uuid4())
     jobs[run_id] = {
         "status": "processing",
         "started_at": time.time(),
+        "disease": None,
+        "region": None,
         "confidence_score": None,
         "explainable_reasoning": None,
     }
@@ -157,6 +217,8 @@ async def status(run_id: str):
     response = {
         "run_id": run_id,
         "status": job["status"],
+        "disease": job.get("disease"),
+        "region": job.get("region"),
         "confidence_score": job["confidence_score"],
         "explainable_reasoning": job["explainable_reasoning"],
     }
@@ -182,3 +244,11 @@ async def heatmap(run_id: str):
 
     logger.info("Serving heatmap for job %s from %s", run_id, heatmap_path)
     return FileResponse(path=heatmap_path, media_type="image/png")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_frontend():
+    index_path = FRONTEND_DIR / "index.html"
+    if not index_path.exists():
+        raise HTTPException(status_code=404, detail="Frontend not found")
+    return HTMLResponse(content=index_path.read_text(encoding="utf-8"))

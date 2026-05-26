@@ -8,11 +8,12 @@ Exposes two CrewAI LLM wrappers:
 API key is loaded from OPENAI_API_KEY in the environment / .env file.
 """
 
+from pathlib import Path
 from dotenv import load_dotenv
 from crewai import LLM
 
 # Load environment variables (expects OPENAI_API_KEY)
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # ---------------------------------------------------------------------------
 # LLM wrappers  (CrewAI v1.x native LLM class)

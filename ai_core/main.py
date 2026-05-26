@@ -13,8 +13,8 @@ import sys
 
 from crewai import Crew, Task, Process
 
-from agents import gatherer_agent, analyst_agent, visualizer_agent
-from schemas import EpidemicPrediction
+from .agents import gatherer_agent, analyst_agent, visualizer_agent
+from .schemas import EpidemicPrediction
 
 
 # ---------------------------------------------------------------------------

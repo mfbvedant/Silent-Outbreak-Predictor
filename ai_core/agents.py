@@ -17,8 +17,8 @@ from crewai import Agent
 from crewai.tools import tool
 from crewai_tools import ScrapeWebsiteTool
 
-from config import fast_llm, smart_llm
-from schemas import EpidemicPrediction
+from .config import fast_llm, smart_llm
+from .schemas import EpidemicPrediction
 
 
 # ---------------------------------------------------------------------------
