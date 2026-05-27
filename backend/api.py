@@ -8,6 +8,7 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="repla
 
 import asyncio
 import logging
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -52,14 +53,18 @@ if _run_pipeline_import_error is not None:
     )
 
 
-def _invoke_run_pipeline(run_id: str):
+def _invoke_run_pipeline(run_id: str, region: str = "", disease: str = "",
+                         date_from: str = "", date_to: str = ""):
     if run_pipeline is None:
         return None
 
     try:
-        crew_result = run_pipeline(run_id)
+        crew_result = run_pipeline(
+            run_id, region=region, disease=disease,
+            date_from=date_from, date_to=date_to,
+        )
     except TypeError:
-        crew_result = run_pipeline()
+        crew_result = run_pipeline(run_id)
 
     # Parse the CrewAI result into a plain dict
     parsed = {}
@@ -110,7 +115,7 @@ def _update_job_from_result(run_id: str, result: dict | None):
 
 
 def _create_placeholder_heatmap(run_id: str):
-    heatmap_path = DATA_OUTPUT_DIR / f"{run_id}.png"
+    heatmap_path = DATA_OUTPUT_DIR / f"outbreak_risk_{run_id}.png"
     if heatmap_path.exists():
         return heatmap_path
 
@@ -123,13 +128,20 @@ def _create_placeholder_heatmap(run_id: str):
     return heatmap_path
 
 
-async def _run_analysis_job(run_id: str):
-    logger.info("Running analysis in background for job %s", run_id)
+_pipeline_lock = threading.Lock()
+
+async def _run_analysis_job(run_id: str, region: str = "",
+                            disease: str = "", date_from: str = "",
+                            date_to: str = ""):
+    logger.info("Running analysis in background for job %s (region=%s, disease=%s, %s to %s)",
+                run_id, region, disease, date_from, date_to)
     result = None
 
     if run_pipeline is not None:
         try:
-            result = await asyncio.to_thread(_invoke_run_pipeline, run_id)
+            result = await asyncio.to_thread(
+                _locked_run_pipeline, run_id, region, disease, date_from, date_to
+            )
         except Exception as exc:
             logger.exception("Background CrewAI run failed for job %s: %s", run_id, exc)
             result = {
@@ -145,6 +157,20 @@ async def _run_analysis_job(run_id: str):
     logger.info("Background analysis complete for job %s", run_id)
 
 
+def _locked_run_pipeline(run_id: str, region: str = "", disease: str = "",
+                         date_from: str = "", date_to: str = ""):
+    """Run the pipeline with a lock to prevent concurrent executor crashes."""
+    with _pipeline_lock:
+        return _invoke_run_pipeline(run_id, region, disease, date_from, date_to)
+
+
+class AnalyzeRequest(BaseModel):
+    region: str = "Pune, Maharashtra"
+    disease: str = ""
+    date_from: str = ""
+    date_to: str = ""
+
+
 class AnalyzeResponse(BaseModel):
     run_id: str
     status: str
@@ -155,6 +181,8 @@ class StatusResponse(BaseModel):
     status: str
     disease: str | None = None
     region: str | None = None
+    date_from: str | None = None
+    date_to: str | None = None
     confidence_score: float | None = None
     explainable_reasoning: str | None = None
 
@@ -192,18 +220,25 @@ async def health():
 
 
 @app.post("/api/analyze", response_model=AnalyzeResponse)
-async def analyze(background_tasks: BackgroundTasks):
+async def analyze(background_tasks: BackgroundTasks, body: AnalyzeRequest = AnalyzeRequest()):
     run_id = str(uuid.uuid4())
     jobs[run_id] = {
         "status": "processing",
         "started_at": time.time(),
         "disease": None,
-        "region": None,
+        "region": body.region,
+        "date_from": body.date_from,
+        "date_to": body.date_to,
         "confidence_score": None,
         "explainable_reasoning": None,
     }
-    background_tasks.add_task(_run_analysis_job, run_id)
-    logger.info("Created new analysis job %s and queued background work", run_id)
+    background_tasks.add_task(
+        _run_analysis_job, run_id,
+        region=body.region, disease=body.disease,
+        date_from=body.date_from, date_to=body.date_to,
+    )
+    logger.info("Created analysis job %s — region=%s disease=%s %s→%s",
+                run_id, body.region, body.disease, body.date_from, body.date_to)
     return {"run_id": run_id, "status": "processing"}
 
 
@@ -219,6 +254,8 @@ async def status(run_id: str):
         "status": job["status"],
         "disease": job.get("disease"),
         "region": job.get("region"),
+        "date_from": job.get("date_from"),
+        "date_to": job.get("date_to"),
         "confidence_score": job["confidence_score"],
         "explainable_reasoning": job["explainable_reasoning"],
     }

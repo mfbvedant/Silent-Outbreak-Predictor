@@ -80,18 +80,20 @@ def python_repl_tool(code: str) -> str:
 gatherer_agent = Agent(
     role="OSINT Medical Intelligence Gatherer",
     goal=(
-        "Systematically monitor official health bulletins (e.g. Pune Municipal Corporation, "
-        "IDSP Maharashtra) and reputable news aggregators to extract disease names, affected "
-        "locations, and incident dates for respiratory and infectious illnesses across the "
-        "Pune and broader Maharashtra region. Strictly ignore advertisements, opinion pieces, "
-        "and irrelevant news articles."
+        "Systematically search official health bulletins, WHO feeds, ProMED reports, CDC MMWR, "
+        "local health department publications, and reputable news aggregators to extract disease "
+        "names, affected locations, and incident dates for the specified target region and time "
+        "period. When a specific disease is provided, focus the search on that pathogen. When no "
+        "disease is specified, scan broadly for any respiratory, infectious, or epidemic-potential "
+        "illness. Strictly ignore advertisements, opinion pieces, and irrelevant articles."
     ),
     backstory=(
         "You are a seasoned open-source intelligence analyst embedded in the WHO South-East "
         "Asia Regional Office. You have spent over a decade perfecting the craft of sifting "
         "through noisy public health data feeds to isolate actionable disease signals before "
         "they escalate into full-blown outbreaks. Your extraction precision has directly "
-        "prevented two regional epidemics from going unnoticed."
+        "prevented two regional epidemics from going unnoticed. You are equally skilled at "
+        "researching historical outbreaks from archived reports and published case studies."
     ),
     tools=[scrape_tool],
     llm=fast_llm,
@@ -110,14 +112,17 @@ analyst_agent = Agent(
         "epidemic indicators. Assess keyword severity (e.g. 'severe', 'outbreak', 'acute', "
         "'H1N1', 'epidemic', 'mortality'), calculate a mathematically grounded confidence_score "
         "on a 0.0–100.0 scale, and produce explainable reasoning that traces each score "
-        "component back to its source evidence. Output a fully validated EpidemicPrediction object."
+        "component back to its source evidence. When analyzing historical data, consider the "
+        "temporal context — past outbreaks that were confirmed should score high even if they "
+        "are no longer active. Output a fully validated EpidemicPrediction object."
     ),
     backstory=(
         "You are a Senior Epidemiologist and Data Scientist with dual PhDs in Computational "
         "Epidemiology and Biostatistics from Johns Hopkins Bloomberg School of Public Health. "
         "You have built outbreak early-warning systems for the CDC and ECDC, and your scoring "
         "methodology has been peer-reviewed in The Lancet Infectious Diseases. You never guess — "
-        "every number you produce is traceable to a quantitative justification."
+        "every number you produce is traceable to a quantitative justification. You are also an "
+        "expert in historical epidemiology, able to assess past outbreaks with the same rigor."
     ),
     llm=smart_llm,
     verbose=True,
