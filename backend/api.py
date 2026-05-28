@@ -256,7 +256,9 @@ async def health():
 async def get_firebase_config():
     return {
         "projectId": os.getenv("FIREBASE_PROJECT_ID", ""),
-        "apiKey": os.getenv("FIREBASE_API_KEY", "")
+        "apiKey": os.getenv("FIREBASE_API_KEY", ""),
+        "appId": os.getenv("FIREBASE_APP_ID", ""),
+        "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID", "")
     }
 
 

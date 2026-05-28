@@ -3112,6 +3112,8 @@
             
             let projectId = '';
             let apiKey = '';
+            let appId = '';
+            let messagingSenderId = '';
 
             try {
                 const response = await fetch(`${API}/api/firebase-config`);
@@ -3119,6 +3121,8 @@
                     const data = await response.json();
                     projectId = data.projectId || '';
                     apiKey = data.apiKey || '';
+                    appId = data.appId || '';
+                    messagingSenderId = data.messagingSenderId || '';
                 }
             } catch (e) {
                 console.error("Failed to fetch Firebase config from API:", e);
@@ -3131,8 +3135,8 @@
                         authDomain: `${projectId}.firebaseapp.com`,
                         projectId: projectId,
                         storageBucket: `${projectId}.appspot.com`,
-                        messagingSenderId: "269132567387",
-                        appId: "1:269132567387:web:c76748a713e8d79658c07e"
+                        messagingSenderId: messagingSenderId || "269132567387",
+                        appId: appId || "1:269132567387:web:c76748a713e8d79658c07e"
                     };
                     
                     if (window.firebase && firebase.apps.length === 0) {
