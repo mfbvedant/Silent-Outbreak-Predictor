@@ -21,6 +21,11 @@ from pydantic import BaseModel
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
+import os
+from dotenv import load_dotenv
+load_dotenv(BASE_DIR / ".env")
+load_dotenv(BASE_DIR / "ai_core" / ".env")
+
 try:
     from ai_core.main import run_pipeline
     _run_pipeline_import_error = None
@@ -54,7 +59,11 @@ if _run_pipeline_import_error is not None:
 
 
 def _invoke_run_pipeline(run_id: str, region: str = "", disease: str = "",
-                         date_from: str = "", date_to: str = ""):
+                         date_from: str = "", date_to: str = "",
+                         model_analysis: str = "gpt-4o",
+                         model_gathering: str = "gpt-4o-mini",
+                         model_visualization: str = "gpt-4o-mini",
+                         sources: list[str] | None = None):
     if run_pipeline is None:
         return None
 
@@ -62,9 +71,19 @@ def _invoke_run_pipeline(run_id: str, region: str = "", disease: str = "",
         crew_result = run_pipeline(
             run_id, region=region, disease=disease,
             date_from=date_from, date_to=date_to,
+            model_analysis=model_analysis,
+            model_gathering=model_gathering,
+            model_visualization=model_visualization,
+            sources=sources
         )
     except TypeError:
-        crew_result = run_pipeline(run_id)
+        try:
+            crew_result = run_pipeline(
+                run_id, region=region, disease=disease,
+                date_from=date_from, date_to=date_to,
+            )
+        except TypeError:
+            crew_result = run_pipeline(run_id)
 
     # Parse the CrewAI result into a plain dict
     parsed = {}
@@ -132,7 +151,11 @@ _pipeline_lock = threading.Lock()
 
 async def _run_analysis_job(run_id: str, region: str = "",
                             disease: str = "", date_from: str = "",
-                            date_to: str = ""):
+                            date_to: str = "",
+                            model_analysis: str = "gpt-4o",
+                            model_gathering: str = "gpt-4o-mini",
+                            model_visualization: str = "gpt-4o-mini",
+                            sources: list[str] | None = None):
     logger.info("Running analysis in background for job %s (region=%s, disease=%s, %s to %s)",
                 run_id, region, disease, date_from, date_to)
     result = None
@@ -140,7 +163,8 @@ async def _run_analysis_job(run_id: str, region: str = "",
     if run_pipeline is not None:
         try:
             result = await asyncio.to_thread(
-                _locked_run_pipeline, run_id, region, disease, date_from, date_to
+                _locked_run_pipeline, run_id, region, disease, date_from, date_to,
+                model_analysis, model_gathering, model_visualization, sources
             )
         except Exception as exc:
             logger.exception("Background CrewAI run failed for job %s: %s", run_id, exc)
@@ -158,10 +182,15 @@ async def _run_analysis_job(run_id: str, region: str = "",
 
 
 def _locked_run_pipeline(run_id: str, region: str = "", disease: str = "",
-                         date_from: str = "", date_to: str = ""):
+                         date_from: str = "", date_to: str = "",
+                         model_analysis: str = "gpt-4o",
+                         model_gathering: str = "gpt-4o-mini",
+                         model_visualization: str = "gpt-4o-mini",
+                         sources: list[str] | None = None):
     """Run the pipeline with a lock to prevent concurrent executor crashes."""
     with _pipeline_lock:
-        return _invoke_run_pipeline(run_id, region, disease, date_from, date_to)
+        return _invoke_run_pipeline(run_id, region, disease, date_from, date_to,
+                                    model_analysis, model_gathering, model_visualization, sources)
 
 
 class AnalyzeRequest(BaseModel):
@@ -169,6 +198,10 @@ class AnalyzeRequest(BaseModel):
     disease: str = ""
     date_from: str = ""
     date_to: str = ""
+    model_analysis: str = "gpt-4o"
+    model_gathering: str = "gpt-4o-mini"
+    model_visualization: str = "gpt-4o-mini"
+    sources: list[str] | None = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -219,6 +252,14 @@ async def health():
     }
 
 
+@app.get("/api/firebase-config")
+async def get_firebase_config():
+    return {
+        "projectId": os.getenv("FIREBASE_PROJECT_ID", ""),
+        "apiKey": os.getenv("FIREBASE_API_KEY", "")
+    }
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 async def analyze(background_tasks: BackgroundTasks, body: AnalyzeRequest = AnalyzeRequest()):
     run_id = str(uuid.uuid4())
@@ -236,9 +277,14 @@ async def analyze(background_tasks: BackgroundTasks, body: AnalyzeRequest = Anal
         _run_analysis_job, run_id,
         region=body.region, disease=body.disease,
         date_from=body.date_from, date_to=body.date_to,
+        model_analysis=body.model_analysis,
+        model_gathering=body.model_gathering,
+        model_visualization=body.model_visualization,
+        sources=body.sources
     )
-    logger.info("Created analysis job %s — region=%s disease=%s %s→%s",
-                run_id, body.region, body.disease, body.date_from, body.date_to)
+    logger.info("Created analysis job %s — region=%s disease=%s %s→%s models=[%s, %s, %s] sources=%s",
+                run_id, body.region, body.disease, body.date_from, body.date_to,
+                body.model_analysis, body.model_gathering, body.model_visualization, body.sources)
     return {"run_id": run_id, "status": "processing"}
 
 

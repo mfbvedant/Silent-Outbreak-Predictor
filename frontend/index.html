@@ -14,6 +14,9 @@
     <!-- Chart.js for premium graphics -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <!-- Firebase SDK Compat -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
 
     <style>
         /* ═══════════════════════════════════════════════════════════
@@ -2740,23 +2743,6 @@
                         <div class="data-source-list">
                             <div class="data-source-item">
                                 <div class="source-left-col">
-                                    <div class="source-ico-bg" style="background:#eff6ff; color:#3b82f6;">📰</div>
-                                    <div class="source-lbl-col">
-                                        <span class="source-lbl-title">News API</span>
-                                        <span class="source-lbl-sub">Active</span>
-                                    </div>
-                                </div>
-                                <div class="source-actions-col">
-                                    <button class="source-gear-btn" onclick="showToast('Configuring News API...')">⚙️</button>
-                                    <label class="switch">
-                                        <input type="checkbox" id="settings-source-news" checked onchange="saveSettings()" />
-                                        <span class="slider"></span>
-                                    </label>
-                                </div>
-                            </div>
-                            
-                            <div class="data-source-item">
-                                <div class="source-left-col">
                                     <div class="source-ico-bg" style="background:#faf5ff; color:#a855f7;">🏛️</div>
                                     <div class="source-lbl-col">
                                         <span class="source-lbl-title">Government Websites</span>
@@ -2960,12 +2946,12 @@
                     </div>
                 </div>
 
-                <!-- Card 5: Account & Security -->
+                <!-- Card 5: Account Settings -->
                 <div class="card">
                     <div class="card-header">
                         <div class="card-header-left">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                            <h3>Account & Security</h3>
+                            <h3>Account Settings</h3>
                         </div>
                     </div>
                     <div class="card-body">
@@ -2983,20 +2969,8 @@
                             </div>
                             <span style="font-size:12px; color:#94a3b8;">&gt;</span>
                         </div>
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-title">Two-Factor Authentication</span>
-                                <span class="setting-desc">Enabled</span>
-                            </div>
-                            <span style="font-size:0.75rem; color:#22c55e; font-weight:600;">Enabled</span>
-                        </div>
-                        <div class="setting-row" onclick="showToast('Opening active session dashboard...')" style="cursor:pointer;">
-                            <div class="setting-info">
-                                <span class="setting-title">Session Management</span>
-                                <span class="setting-desc">Manage active sessions.</span>
-                            </div>
-                            <span style="font-size:12px; color:#94a3b8;">&gt;</span>
-                        </div>
+
+
                         <button class="control-btn" onclick="logOut()" style="width:100%; justify-content:center; margin-top:16px; background:#fef2f2; border:1px solid #fecaca; color:#ef4444; height:38px; font-weight:700;">
                             Log Out
                         </button>
@@ -3079,6 +3053,89 @@
         // ═══ GLOBAL STATE ═══
         const API = window.location.origin;
 
+        // ═══ FIREBASE INITIALIZATION ═══
+        let firebaseApp = null;
+        let firebaseAuth = null;
+        let useFirebase = false;
+        let firebaseAuthListenerUnsubscribe = null;
+
+        async function initFirebase() {
+            // Clean up existing listener if re-initializing
+            if (firebaseAuthListenerUnsubscribe) {
+                firebaseAuthListenerUnsubscribe();
+                firebaseAuthListenerUnsubscribe = null;
+            }
+            
+            let projectId = '';
+            let apiKey = '';
+
+            try {
+                const response = await fetch(`${API}/api/firebase-config`);
+                if (response.ok) {
+                    const data = await response.json();
+                    projectId = data.projectId || '';
+                    apiKey = data.apiKey || '';
+                }
+            } catch (e) {
+                console.error("Failed to fetch Firebase config from API:", e);
+            }
+            
+            if (apiKey && projectId) {
+                try {
+                    const firebaseConfig = {
+                        apiKey: apiKey,
+                        authDomain: `${projectId}.firebaseapp.com`,
+                        projectId: projectId,
+                        storageBucket: `${projectId}.appspot.com`,
+                        messagingSenderId: "269132567387",
+                        appId: "1:269132567387:web:c76748a713e8d79658c07e"
+                    };
+                    
+                    if (window.firebase && firebase.apps.length === 0) {
+                        firebaseApp = firebase.initializeApp(firebaseConfig);
+                    } else if (window.firebase) {
+                        firebaseApp = firebase.app();
+                    }
+                    
+                    if (window.firebase) {
+                        firebaseAuth = firebase.auth();
+                        useFirebase = true;
+                        console.log("Firebase initialized successfully with Project ID:", projectId);
+                        
+                        // Listen to auth changes
+                        firebaseAuthListenerUnsubscribe = firebaseAuth.onAuthStateChanged(user => {
+                            if (user) {
+                                console.log("Firebase onAuthStateChanged: Logged in user", user.email);
+                                const name = user.displayName || user.email.split('@')[0];
+                                localStorage.setItem('silent_outbreak_session', JSON.stringify({ email: user.email, name: name }));
+                                
+                                // Transition to app
+                                document.getElementById('auth-container').style.display = 'none';
+                                document.getElementById('app-container').style.display = 'flex';
+                                const settingsEmail = document.getElementById('settings-email-desc');
+                                if (settingsEmail) settingsEmail.textContent = user.email;
+                                setTimeout(resizeAllCharts, 200);
+                            } else {
+                                console.log("Firebase onAuthStateChanged: No logged in user");
+                                localStorage.removeItem('silent_outbreak_session');
+                                document.getElementById('auth-container').style.display = 'flex';
+                                document.getElementById('app-container').style.display = 'none';
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.error("Failed to initialize Firebase Auth:", e);
+                    showToast("Firebase connection failed. Falling back to local storage.", true);
+                    useFirebase = false;
+                    checkAuthSession();
+                }
+            } else {
+                console.log("Firebase not configured in backend environment. Using local storage mock auth.");
+                useFirebase = false;
+                checkAuthSession();
+            }
+        }
+
         // ═══ AUTHENTICATION SYSTEM ═══
         function toggleAuthMode(mode) {
             document.querySelectorAll('.auth-form-view').forEach(view => view.classList.remove('active'));
@@ -3126,7 +3183,7 @@
             }
         }
 
-        function handleSignUpSubmit(event) {
+        async function handleSignUpSubmit(event) {
             event.preventDefault();
             const name = document.getElementById('signup-name').value.trim();
             const email = document.getElementById('signup-email').value.trim();
@@ -3148,34 +3205,61 @@
                 return;
             }
             
-            let accounts = [];
-            try {
-                const stored = localStorage.getItem('silent_outbreak_accounts');
-                if (stored) accounts = JSON.parse(stored);
-            } catch (e) { console.error(e); }
-            
-            if (accounts.some(acc => acc.email.toLowerCase() === email.toLowerCase())) {
-                showToast("An account with this email already exists.", true);
-                return;
+            if (useFirebase && firebaseAuth) {
+                const btn = document.querySelector('#auth-signup-form button.auth-btn');
+                const origHtml = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="btn-text">Creating account...</span>';
+                try {
+                    const userCredential = await firebaseAuth.createUserWithEmailAndPassword(email, pass);
+                    await userCredential.user.updateProfile({ displayName: name });
+                    showToast("Account created successfully with Firebase!");
+                    
+                    // Clear inputs
+                    document.getElementById('signup-name').value = '';
+                    document.getElementById('signup-email').value = '';
+                    document.getElementById('signup-password').value = '';
+                    document.getElementById('signup-confirm-password').value = '';
+                    validateSignupPassword();
+                    document.getElementById('signup-agree').checked = false;
+                    toggleAuthMode('signin');
+                } catch (err) {
+                    console.error("Firebase SignUp error:", err);
+                    showToast(err.message || "Failed to register via Firebase.", true);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
+            } else {
+                let accounts = [];
+                try {
+                    const stored = localStorage.getItem('silent_outbreak_accounts');
+                    if (stored) accounts = JSON.parse(stored);
+                } catch (e) { console.error(e); }
+                
+                if (accounts.some(acc => acc.email.toLowerCase() === email.toLowerCase())) {
+                    showToast("An account with this email already exists.", true);
+                    return;
+                }
+                
+                accounts.push({ name, email, password: pass });
+                localStorage.setItem('silent_outbreak_accounts', JSON.stringify(accounts));
+                
+                showToast("Account created successfully! Please sign in.");
+                
+                // Clear inputs
+                document.getElementById('signup-name').value = '';
+                document.getElementById('signup-email').value = '';
+                document.getElementById('signup-password').value = '';
+                document.getElementById('signup-confirm-password').value = '';
+                validateSignupPassword();
+                document.getElementById('signup-agree').checked = false;
+                
+                toggleAuthMode('signin');
             }
-            
-            accounts.push({ name, email, password: pass });
-            localStorage.setItem('silent_outbreak_accounts', JSON.stringify(accounts));
-            
-            showToast("Account created successfully! Please sign in.");
-            
-            // Clear inputs
-            document.getElementById('signup-name').value = '';
-            document.getElementById('signup-email').value = '';
-            document.getElementById('signup-password').value = '';
-            document.getElementById('signup-confirm-password').value = '';
-            validateSignupPassword();
-            document.getElementById('signup-agree').checked = false;
-            
-            toggleAuthMode('signin');
         }
 
-        function handleSignInSubmit(event) {
+        async function handleSignInSubmit(event) {
             event.preventDefault();
             const email = document.getElementById('signin-email').value.trim();
             const pass = document.getElementById('signin-password').value;
@@ -3185,41 +3269,78 @@
                 return;
             }
             
-            let accounts = [];
-            try {
-                const stored = localStorage.getItem('silent_outbreak_accounts');
-                if (stored) accounts = JSON.parse(stored);
-            } catch (e) { console.error(e); }
-            
-            // Default account if empty
-            if (accounts.length === 0) {
-                accounts.push({ name: 'System User', email: 'user@example.com', password: 'Password123!' });
-                localStorage.setItem('silent_outbreak_accounts', JSON.stringify(accounts));
+            if (useFirebase && firebaseAuth) {
+                const btn = document.querySelector('#auth-signin-form button.auth-btn');
+                const origHtml = btn.innerHTML;
+                btn.disabled = true;
+                btn.innerHTML = '<span class="btn-text">Signing in...</span>';
+                try {
+                    await firebaseAuth.signInWithEmailAndPassword(email, pass);
+                    showToast("Signed in successfully via Firebase!");
+                    document.getElementById('signin-email').value = '';
+                    document.getElementById('signin-password').value = '';
+                } catch (err) {
+                    console.error("Firebase SignIn error:", err);
+                    showToast(err.message || "Invalid email or password.", true);
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
+                }
+            } else {
+                let accounts = [];
+                try {
+                    const stored = localStorage.getItem('silent_outbreak_accounts');
+                    if (stored) accounts = JSON.parse(stored);
+                } catch (e) { console.error(e); }
+                
+                // Default account if empty
+                if (accounts.length === 0) {
+                    accounts.push({ name: 'System User', email: 'user@example.com', password: 'Password123!' });
+                    localStorage.setItem('silent_outbreak_accounts', JSON.stringify(accounts));
+                }
+                
+                const user = accounts.find(acc => acc.email.toLowerCase() === email.toLowerCase() && acc.password === pass);
+                
+                if (!user) {
+                    showToast("Invalid email or password.", true);
+                    return;
+                }
+                
+                localStorage.setItem('silent_outbreak_session', JSON.stringify({ email: user.email, name: user.name }));
+                showToast(`Welcome back, ${user.name}!`);
+                
+                document.getElementById('auth-container').style.display = 'none';
+                document.getElementById('app-container').style.display = 'flex';
+                
+                const settingsEmail = document.getElementById('settings-email-desc');
+                if (settingsEmail) settingsEmail.textContent = user.email;
+                
+                document.getElementById('signin-email').value = '';
+                document.getElementById('signin-password').value = '';
+                
+                setTimeout(resizeAllCharts, 200);
             }
-            
-            const user = accounts.find(acc => acc.email.toLowerCase() === email.toLowerCase() && acc.password === pass);
-            
-            if (!user) {
-                showToast("Invalid email or password.", true);
-                return;
-            }
-            
-            localStorage.setItem('silent_outbreak_session', JSON.stringify({ email: user.email, name: user.name }));
-            showToast(`Welcome back, ${user.name}!`);
-            
-            document.getElementById('auth-container').style.display = 'none';
-            document.getElementById('app-container').style.display = 'flex';
-            
-            const settingsEmail = document.getElementById('settings-email-desc');
-            if (settingsEmail) settingsEmail.textContent = user.email;
-            
-            document.getElementById('signin-email').value = '';
-            document.getElementById('signin-password').value = '';
-            
-            setTimeout(resizeAllCharts, 200);
         }
 
         function checkAuthSession() {
+            if (useFirebase && firebaseAuth) {
+                const user = firebaseAuth.currentUser;
+                if (user) {
+                    document.getElementById('auth-container').style.display = 'none';
+                    document.getElementById('app-container').style.display = 'flex';
+                    const settingsEmail = document.getElementById('settings-email-desc');
+                    if (settingsEmail) settingsEmail.textContent = user.email;
+                    return true;
+                }
+                const stored = localStorage.getItem('silent_outbreak_session');
+                if (stored) {
+                    document.getElementById('auth-container').style.display = 'none';
+                    document.getElementById('app-container').style.display = 'flex';
+                    return true;
+                }
+                return false;
+            }
+            
             let session = null;
             try {
                 const stored = localStorage.getItem('silent_outbreak_session');
@@ -3452,7 +3573,6 @@
                 timeRange: document.getElementById('settings-time-range').value,
                 refreshInterval: document.getElementById('settings-refresh-interval').value,
                 language: document.getElementById('settings-language').value,
-                sourceNews: document.getElementById('settings-source-news').checked,
                 sourceGov: document.getElementById('settings-source-gov').checked,
                 sourceHospitals: document.getElementById('settings-source-hospitals').checked,
                 sourceSocial: document.getElementById('settings-source-social').checked,
@@ -3469,8 +3589,10 @@
                 pipelineIntermediate: document.getElementById('settings-pipeline-intermediate').checked,
                 email: document.getElementById('settings-email-desc').textContent
             };
+            
             localStorage.setItem('silent_outbreak_settings', JSON.stringify(settings));
             applySettings(settings);
+            showToast("Settings saved successfully!");
         }
 
         function loadSettings() {
@@ -3490,7 +3612,6 @@
                     timeRange: 'Last 7 Days',
                     refreshInterval: 'Disabled',
                     language: 'English',
-                    sourceNews: true,
                     sourceGov: true,
                     sourceHospitals: true,
                     sourceSocial: false,
@@ -3514,7 +3635,6 @@
             document.getElementById('settings-refresh-interval').value = settings.refreshInterval || 'Disabled';
             document.getElementById('settings-language').value = settings.language || 'English';
 
-            document.getElementById('settings-source-news').checked = settings.sourceNews !== false;
             document.getElementById('settings-source-gov').checked = settings.sourceGov !== false;
             document.getElementById('settings-source-hospitals').checked = settings.sourceHospitals !== false;
             document.getElementById('settings-source-social').checked = !!settings.sourceSocial;
@@ -3611,75 +3731,117 @@
             updateHeaderUI();
         }
 
-        function changeEmail() {
+        async function changeEmail() {
             const emailDesc = document.getElementById('settings-email-desc');
             const current = emailDesc.textContent;
             const next = prompt("Enter new email address:", current);
             if (next && next.trim()) {
                 const newEmail = next.trim();
                 
-                // Update database account
-                let session = null;
-                try {
-                    session = JSON.parse(localStorage.getItem('silent_outbreak_session'));
-                } catch(e) {}
-                
-                if (session) {
-                    let accounts = [];
-                    try {
-                        accounts = JSON.parse(localStorage.getItem('silent_outbreak_accounts')) || [];
-                    } catch(e) {}
-                    
-                    const acc = accounts.find(a => a.email.toLowerCase() === session.email.toLowerCase());
-                    if (acc) {
-                        acc.email = newEmail;
-                        localStorage.setItem('silent_outbreak_accounts', JSON.stringify(accounts));
-                    }
-                    
-                    // Update session
-                    session.email = newEmail;
-                    localStorage.setItem('silent_outbreak_session', JSON.stringify(session));
-                }
-                
-                emailDesc.textContent = newEmail;
-                saveSettings();
-                showToast("Email address updated!");
-            }
-        }
-
-        function changePassword() {
-            const pass = prompt("Enter new password:");
-            if (pass && pass.trim()) {
-                let session = null;
-                try {
-                    session = JSON.parse(localStorage.getItem('silent_outbreak_session'));
-                } catch(e) {}
-                
-                if (session) {
-                    let accounts = [];
-                    try {
-                        accounts = JSON.parse(localStorage.getItem('silent_outbreak_accounts')) || [];
-                    } catch(e) {}
-                    
-                    const acc = accounts.find(a => a.email.toLowerCase() === session.email.toLowerCase());
-                    if (acc) {
-                        acc.password = pass;
-                        localStorage.setItem('silent_outbreak_accounts', JSON.stringify(accounts));
-                        showToast("Password updated successfully!");
+                if (useFirebase && firebaseAuth) {
+                    const user = firebaseAuth.currentUser;
+                    if (user) {
+                        try {
+                            await user.updateEmail(newEmail);
+                            emailDesc.textContent = newEmail;
+                            showToast("Email address updated in Firebase!");
+                        } catch (err) {
+                            console.error("Firebase updateEmail error:", err);
+                            showToast(err.message || "Failed to update email. You may need to sign out and sign back in to modify this.", true);
+                        }
                     } else {
-                        showToast("Failed to update password: User not found.", true);
+                        showToast("No active user session in Firebase.", true);
                     }
                 } else {
-                    showToast("No active session.", true);
+                    // Update database account
+                    let session = null;
+                    try {
+                        session = JSON.parse(localStorage.getItem('silent_outbreak_session'));
+                    } catch(e) {}
+                    
+                    if (session) {
+                        let accounts = [];
+                        try {
+                            accounts = JSON.parse(localStorage.getItem('silent_outbreak_accounts')) || [];
+                        } catch(e) {}
+                        
+                        const acc = accounts.find(a => a.email.toLowerCase() === session.email.toLowerCase());
+                        if (acc) {
+                            acc.email = newEmail;
+                            localStorage.setItem('silent_outbreak_accounts', JSON.stringify(accounts));
+                        }
+                        
+                        // Update session
+                        session.email = newEmail;
+                        localStorage.setItem('silent_outbreak_session', JSON.stringify(session));
+                    }
+                    
+                    emailDesc.textContent = newEmail;
+                    saveSettings();
+                    showToast("Email address updated!");
                 }
             }
         }
 
-        function logOut() {
+        async function changePassword() {
+            const pass = prompt("Enter new password:");
+            if (pass && pass.trim()) {
+                if (useFirebase && firebaseAuth) {
+                    const user = firebaseAuth.currentUser;
+                    if (user) {
+                        try {
+                            await user.updatePassword(pass);
+                            showToast("Password updated successfully in Firebase!");
+                        } catch (err) {
+                            console.error("Firebase updatePassword error:", err);
+                            showToast(err.message || "Failed to update password. You may need to sign out and sign back in to modify this.", true);
+                        }
+                    } else {
+                        showToast("No active user session in Firebase.", true);
+                    }
+                } else {
+                    let session = null;
+                    try {
+                        session = JSON.parse(localStorage.getItem('silent_outbreak_session'));
+                    } catch(e) {}
+                    
+                    if (session) {
+                        let accounts = [];
+                        try {
+                            accounts = JSON.parse(localStorage.getItem('silent_outbreak_accounts')) || [];
+                        } catch(e) {}
+                        
+                        const acc = accounts.find(a => a.email.toLowerCase() === session.email.toLowerCase());
+                        if (acc) {
+                            acc.password = pass;
+                            localStorage.setItem('silent_outbreak_accounts', JSON.stringify(accounts));
+                            showToast("Password updated successfully!");
+                        } else {
+                            showToast("Failed to update password: User not found.", true);
+                        }
+                    } else {
+                        showToast("No active session.", true);
+                    }
+                }
+            }
+        }
+
+        async function logOut() {
             if (confirm("Are you sure you want to log out?")) {
-                localStorage.removeItem('silent_outbreak_session');
-                checkAuthSession();
-                showToast("Logged out successfully!");
+                if (useFirebase && firebaseAuth) {
+                    try {
+                        await firebaseAuth.signOut();
+                        localStorage.removeItem('silent_outbreak_session');
+                        showToast("Logged out successfully from Firebase!");
+                    } catch (err) {
+                        console.error("Firebase signOut error:", err);
+                        showToast(err.message || "Failed to log out from Firebase.", true);
+                    }
+                } else {
+                    localStorage.removeItem('silent_outbreak_session');
+                    checkAuthSession();
+                    showToast("Logged out successfully!");
+                }
             }
         }
 
@@ -4126,11 +4288,32 @@
             startGlobeSearching('viz');
 
             try {
+                // Retrieve settings to customize pipeline execution
+                let settings = {};
+                try {
+                    const stored = localStorage.getItem('silent_outbreak_settings');
+                    if (stored) settings = JSON.parse(stored);
+                } catch(e) {}
+
+                const modelAnalysis = settings.modelAnalysis || 'gpt-4o';
+                const modelGathering = settings.modelGathering || 'gpt-4o-mini';
+                const modelVisualization = settings.modelVisualization || 'gpt-4o-mini';
+
+                const sources = [];
+                if (settings.sourceGov !== false) sources.push('government');
+                if (settings.sourceHospitals !== false) sources.push('hospitals');
+                if (settings.sourceSocial) sources.push('social');
+                if (settings.sourceLocal !== false) sources.push('local_news');
+
                 const searchParams = {
                     region: document.getElementById('input-region').value || 'Pune, Maharashtra',
                     disease: document.getElementById('input-disease').value || '',
                     date_from: document.getElementById('input-date-from').value || '',
                     date_to: document.getElementById('input-date-to').value || '',
+                    model_analysis: modelAnalysis,
+                    model_gathering: modelGathering,
+                    model_visualization: modelVisualization,
+                    sources: sources
                 };
 
                 const startRes = await fetch(`${API}/api/analyze`, {
@@ -5662,8 +5845,8 @@
                 });
             }
 
-            // Enforce checking of auth session on initial load
-            checkAuthSession();
+            // Initialize Firebase Auth (falls back to local storage auth if not configured)
+            initFirebase();
         });
     </script>
 </body>

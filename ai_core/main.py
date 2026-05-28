@@ -22,12 +22,37 @@ from .schemas import EpidemicPrediction
 # Task definitions (created fresh per run to avoid concurrency issues)
 # ---------------------------------------------------------------------------
 
-def _build_tasks():
+def _build_tasks(sources: list[str] | None = None):
     """Create fresh Task instances for each pipeline run.
 
     Task descriptions use CrewAI template variables:
       {{run_id}}, {{region}}, {{disease}}, {{date_from}}, {{date_to}}
     """
+    # Format sources into search strategy instructions
+    strategy_parts = [
+        "1. Search Google for: '{{disease}} outbreak {{region}} {{date_from}} {{date_to}}'"
+    ]
+    if not sources:
+        sources = ["government", "hospitals", "local_news"]
+
+    strategy_idx = 2
+    if "government" in sources:
+        strategy_parts.append(f"{strategy_idx}. Scrape official health bulletins: WHO, ProMED, CDC MMWR, national/regional health departments.")
+        strategy_idx += 1
+    if "hospitals" in sources:
+        strategy_parts.append(f"{strategy_idx}. Scrape clinical hospital databases, academic research papers, and published epidemiological studies.")
+        strategy_idx += 1
+    if "social" in sources:
+        strategy_parts.append(f"{strategy_idx}. Check online social health forums, web trend indicators, and crowd-sourced outbreak trackers.")
+        strategy_idx += 1
+    if "local_news" in sources:
+        strategy_parts.append(f"{strategy_idx}. Inspect localized digital news archives and regional community bulletins.")
+        strategy_idx += 1
+        
+    strategy_parts.append(f"{strategy_idx}. For historical dates, look for archived reports and retrospective analyses from the selected sources.")
+
+    strategy_text = "\n".join(f"  {line}" for line in strategy_parts)
+
     gather_task = Task(
         description=(
             "Search for disease outbreak and epidemic events in the region '{{region}}' "
@@ -40,11 +65,7 @@ def _build_tasks():
             "illness (e.g. cholera, H1N1, dengue, COVID-19, Ebola, plague, typhoid, etc.).\n"
             "{% endif %}\n"
             "Search strategy:\n"
-            "  1. Search Google for: '{{disease}} outbreak {{region}} {{date_from}} {{date_to}}'\n"
-            "  2. Scrape official health bulletins: WHO, ProMED, CDC MMWR, local health departments\n"
-            "  3. Check news aggregators for outbreak reports in the target region and period\n"
-            "  4. For historical dates, look for archived reports, published case studies, "
-            "and retrospective epidemiological analyses\n\n"
+            f"{strategy_text}\n\n"
             "For every event you find, extract:\n"
             "  • Disease / pathogen name\n"
             "  • Affected geographic location (city, district, state, or country)\n"
@@ -118,7 +139,7 @@ def _build_tasks():
             "CRITICAL: DO NOT output the raw Python code as your final answer. "
             "You MUST pass the code into the `python_repl` tool to execute it. "
             "Your task is only complete when the tool successfully runs and saves "
-            "the image to `../data_outputs/outbreak_risk_{{run_id}}.png`. "
+            "the image to `../data_outputs/outbreak_risk_{run_id}.png`. "
             "Your final output should just be a confirmation string that the file exists."
         ),
         expected_output=(
@@ -143,6 +164,10 @@ def run_pipeline(
     disease: str = "",
     date_from: str = "",
     date_to: str = "",
+    model_analysis: str = "gpt-4o",
+    model_gathering: str = "gpt-4o-mini",
+    model_visualization: str = "gpt-4o-mini",
+    sources: list[str] | None = None,
 ):
     """Assemble and kick off the three-agent sequential crew.
 
@@ -152,6 +177,10 @@ def run_pipeline(
         disease: Specific disease to investigate (empty = auto-detect).
         date_from: Start date for the search window (YYYY-MM-DD).
         date_to: End date for the search window (YYYY-MM-DD).
+        model_analysis: Model to use for analysis (default: gpt-4o).
+        model_gathering: Model to use for gathering (default: gpt-4o-mini).
+        model_visualization: Model to use for visualization (default: gpt-4o-mini).
+        sources: Filter of web sources to search.
     """
     # Default dates: last 7 days if not provided
     if not date_to:
@@ -161,7 +190,25 @@ def run_pipeline(
     if not disease:
         disease = "Any / Auto-detect"
 
-    gather_task, analyze_task, visualize_task = _build_tasks()
+    # Configure dynamic LLMs on agents
+    from crewai import LLM as CrewLLM
+    
+    def get_llm(model_name: str, temperature: float = 0.2):
+        if model_name.startswith("gpt-"):
+            model_path = f"openai/{model_name}"
+        elif model_name.startswith("claude-"):
+            model_path = f"anthropic/{model_name}"
+        elif model_name.startswith("o1-"):
+            model_path = f"openai/{model_name}"
+        else:
+            model_path = f"openai/{model_name}"
+        return CrewLLM(model=model_path, temperature=temperature)
+
+    gatherer_agent.llm = get_llm(model_gathering, 0.1)
+    analyst_agent.llm = get_llm(model_analysis, 0.2)
+    visualizer_agent.llm = get_llm(model_visualization, 0.1)
+
+    gather_task, analyze_task, visualize_task = _build_tasks(sources=sources)
 
     crew = Crew(
         agents=[gatherer_agent, analyst_agent, visualizer_agent],
