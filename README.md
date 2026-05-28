@@ -2,6 +2,8 @@
 
 A state-of-the-art, full-stack epidemiological early warning and forecasting system. The platform leverages a multi-agent AI pipeline to scan open-source intelligence (OSINT), assess outbreak severity, calculate mathematically grounded risk scores, and generate publication-quality visual insights—all secured by a premium, hybrid Firebase Authentication landing page.
 
+**🌐 Live Demo Website:** **[https://silent-outbreak-predictor.onrender.com/](https://silent-outbreak-predictor.onrender.com/)**
+
 ---
 
 ## 🏗️ Architecture & Component Stack
