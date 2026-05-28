@@ -3053,6 +3053,50 @@
         // ═══ GLOBAL STATE ═══
         const API = window.location.origin;
 
+        // ═══ USER HISTORY PERSISTENCE ═══
+        function getActiveUserEmail() {
+            if (useFirebase && firebaseAuth && firebaseAuth.currentUser) {
+                return firebaseAuth.currentUser.email;
+            }
+            try {
+                const session = JSON.parse(localStorage.getItem('silent_outbreak_session'));
+                if (session && session.email) return session.email;
+            } catch(e) {}
+            return 'default_user';
+        }
+
+        function saveUserHistory() {
+            const email = getActiveUserEmail();
+            const historyKey = 'silent_outbreak_history_' + encodeURIComponent(email.toLowerCase());
+            localStorage.setItem(historyKey, JSON.stringify(runHistory));
+        }
+
+        function loadUserHistory() {
+            const email = getActiveUserEmail();
+            const historyKey = 'silent_outbreak_history_' + encodeURIComponent(email.toLowerCase());
+            try {
+                const stored = localStorage.getItem(historyKey);
+                runHistory = stored ? JSON.parse(stored) : [];
+            } catch (e) {
+                console.error("Failed to load user history:", e);
+                runHistory = [];
+            }
+            
+            // Refresh all related views that use runHistory
+            updateHistoryTableUI();
+            populateReportsTableFromHistory();
+            populateHistoryDropdown();
+            
+            // If there are items in the history, load the latest one as active/displayed data
+            if (runHistory.length > 0) {
+                activeSearchData = runHistory[0];
+                displayedData = runHistory[0];
+                renderAnalysisData(runHistory[0], false);
+            } else {
+                resetDashboardToDefault();
+            }
+        }
+
         // ═══ FIREBASE INITIALIZATION ═══
         let firebaseApp = null;
         let firebaseAuth = null;
@@ -3115,6 +3159,7 @@
                                 const settingsEmail = document.getElementById('settings-email-desc');
                                 if (settingsEmail) settingsEmail.textContent = user.email;
                                 setTimeout(resizeAllCharts, 200);
+                                loadUserHistory();
                             } else {
                                 console.log("Firebase onAuthStateChanged: No logged in user");
                                 localStorage.removeItem('silent_outbreak_session');
@@ -3319,6 +3364,7 @@
                 document.getElementById('signin-password').value = '';
                 
                 setTimeout(resizeAllCharts, 200);
+                loadUserHistory();
             }
         }
 
@@ -3330,12 +3376,14 @@
                     document.getElementById('app-container').style.display = 'flex';
                     const settingsEmail = document.getElementById('settings-email-desc');
                     if (settingsEmail) settingsEmail.textContent = user.email;
+                    loadUserHistory();
                     return true;
                 }
                 const stored = localStorage.getItem('silent_outbreak_session');
                 if (stored) {
                     document.getElementById('auth-container').style.display = 'none';
                     document.getElementById('app-container').style.display = 'flex';
+                    loadUserHistory();
                     return true;
                 }
                 return false;
@@ -3352,6 +3400,7 @@
                 document.getElementById('app-container').style.display = 'flex';
                 const settingsEmail = document.getElementById('settings-email-desc');
                 if (settingsEmail) settingsEmail.textContent = session.email;
+                loadUserHistory();
                 return true;
             } else {
                 document.getElementById('auth-container').style.display = 'flex';
@@ -3828,6 +3877,12 @@
 
         async function logOut() {
             if (confirm("Are you sure you want to log out?")) {
+                runHistory = [];
+                updateHistoryTableUI();
+                populateReportsTableFromHistory();
+                populateHistoryDropdown();
+                resetDashboardToDefault();
+
                 if (useFirebase && firebaseAuth) {
                     try {
                         await firebaseAuth.signOut();
@@ -4380,6 +4435,7 @@
                 result.timestamp = new Date().toLocaleString();
                 runHistory.unshift(result);
                 updateHistoryTableUI();
+                saveUserHistory();
 
                 // Save as active and render (trigger zooming globe animation)
                 activeSearchData = result;
@@ -4409,6 +4465,7 @@
                 fallbackResult.timestamp = new Date().toLocaleString();
                 runHistory.unshift(fallbackResult);
                 updateHistoryTableUI();
+                saveUserHistory();
 
                 activeSearchData = fallbackResult;
                 displayedData = fallbackResult;
