@@ -1958,8 +1958,6 @@
                 <button class="settings-subtab" onclick="switchSettingsTab('sources', this)">Data Sources</button>
                 <button class="settings-subtab" onclick="switchSettingsTab('notifications', this)">Notifications</button>
                 <button class="settings-subtab" onclick="switchSettingsTab('pipeline', this)">Pipeline</button>
-                <button class="settings-subtab" onclick="switchSettingsTab('api', this)">API & Integrations</button>
-                <button class="settings-subtab" onclick="switchSettingsTab('security', this)">Security</button>
                 <button class="settings-subtab" onclick="switchSettingsTab('account', this)">Account</button>
             </div>
 
@@ -2263,48 +2261,6 @@
                     </div>
                 </div>
 
-                <!-- Card 5: API & Integrations -->
-                <div class="card">
-                    <div class="card-header">
-                        <div class="card-header-left">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                            <h3>API & Integrations</h3>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-title">News API Key</span>
-                                <span class="setting-desc">***************1234</span>
-                            </div>
-                            <button class="source-gear-btn">✏️</button>
-                        </div>
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-title">Bing News API Key</span>
-                                <span class="setting-desc">***************5678</span>
-                            </div>
-                            <button class="source-gear-btn">✏️</button>
-                        </div>
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-title">NewsAPI.org Key</span>
-                                <span class="setting-desc">Not Configured</span>
-                            </div>
-                            <button class="source-gear-btn">✏️</button>
-                        </div>
-                        <div class="setting-row">
-                            <div class="setting-info">
-                                <span class="setting-title">GDELT API Key</span>
-                                <span class="setting-desc">Not Configured</span>
-                            </div>
-                            <button class="source-gear-btn">✏️</button>
-                        </div>
-                        <button class="control-btn" style="width:100%; justify-content:center; margin-top:16px; background:#fff; border:1px solid #e2e8f0; color:#334155; height:38px;">
-                            Manage Integrations
-                        </button>
-                    </div>
-                </div>
 
                 <!-- Card 6: Account & Security -->
                 <div class="card">
@@ -2538,9 +2494,8 @@
                 'sources': [1],
                 'notifications': [2],
                 'pipeline': [3],
-                'api': [4],
-                'security': [5],
-                'account': [5]
+                'security': [4],
+                'account': [4]
             };
 
             const activeIndexes = tabIndexMap[tabName] || [0];
