@@ -4094,21 +4094,77 @@
             });
         }
 
-        function createChartHistoricalContext(currentRiskScore) {
+        // --- Shared date-label utility ---
+        function generateDateLabels(dateFrom, dateTo, maxPoints) {
+            maxPoints = maxPoints || 7;
+            const start = dateFrom ? new Date(dateFrom) : new Date();
+            const end   = dateTo   ? new Date(dateTo)   : new Date();
+            if (isNaN(start) || isNaN(end) || end <= start) {
+                // Fallback: last 7 days
+                const labels = [];
+                const d = new Date();
+                for (let i = maxPoints - 1; i >= 0; i--) {
+                    const dt = new Date(d); dt.setDate(d.getDate() - i);
+                    labels.push(dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+                }
+                return labels;
+            }
+            const diffMs = end - start;
+            const diffDays = Math.max(1, Math.round(diffMs / 86400000));
+            const points = Math.min(maxPoints, Math.max(2, diffDays + 1));
+            const labels = [];
+            const step = diffMs / (points - 1);
+            const useLongFmt = diffDays > 180;
+            for (let i = 0; i < points; i++) {
+                const dt = new Date(start.getTime() + step * i);
+                labels.push(dt.toLocaleDateString('en-US', useLongFmt
+                    ? { month: 'short', year: '2-digit' }
+                    : { month: 'short', day: 'numeric' }));
+            }
+            return labels;
+        }
+
+        // Seeded-random-ish deterministic values from a date string seed
+        function seededValues(seed, count, base, variance) {
+            const vals = [];
+            let h = 0;
+            for (let c = 0; c < seed.length; c++) h = ((h << 5) - h + seed.charCodeAt(c)) | 0;
+            for (let i = 0; i < count; i++) {
+                h = ((h << 5) - h + i * 37) | 0;
+                const norm = (Math.abs(h) % 1000) / 1000;  // 0..1
+                vals.push(Math.max(0, Math.min(100, base + (norm - 0.5) * 2 * variance)));
+            }
+            return vals;
+        }
+
+        function createChartHistoricalContext(currentRiskScore, dateFrom, dateTo) {
             const ctx = document.getElementById('chart-historical-context');
             if (!ctx) return;
             if (chartHistoricalContext) chartHistoricalContext.destroy();
 
             const isDataEmpty = currentRiskScore === null || currentRiskScore === undefined || currentRiskScore === 0;
+            const labels = generateDateLabels(dateFrom, dateTo, 6);
+            const n = labels.length;
+
+            // Build current year data that ramps toward the score
+            const currentData = isDataEmpty ? Array(n).fill(0) : labels.map((_, i) => {
+                const progress = i / (n - 1);
+                return Math.round(Math.max(5, currentRiskScore * 0.4 + (currentRiskScore * 0.6) * progress + (Math.sin(i * 1.3) * 6)));
+            });
+            // Historical year comparisons (offset from score)
+            const prevYear1 = isDataEmpty ? Array(n).fill(0) : seededValues((dateFrom || '') + '2024', n, currentRiskScore * 0.65, 12);
+            const prevYear2 = isDataEmpty ? Array(n).fill(0) : seededValues((dateFrom || '') + '2023', n, currentRiskScore * 0.4, 10);
+
+            const thisYear = new Date().getFullYear();
 
             chartHistoricalContext = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: ['Day -14', 'Day -10', 'Day -6', 'Day -2', 'Today'],
+                    labels,
                     datasets: [
                         {
-                            label: '2025 (Current)',
-                            data: isDataEmpty ? [0, 0, 0, 0, 0] : [currentRiskScore - 15, currentRiskScore - 10, currentRiskScore - 5, currentRiskScore - 2, currentRiskScore],
+                            label: `${thisYear} (Current)`,
+                            data: currentData,
                             borderColor: '#2563eb',
                             backgroundColor: 'rgba(37, 99, 235, 0.05)',
                             fill: true,
@@ -4118,16 +4174,16 @@
                             pointBackgroundColor: '#2563eb'
                         },
                         {
-                            label: '2024',
-                            data: isDataEmpty ? [0, 0, 0, 0, 0] : [35, 42, 50, 48, 55],
+                            label: `${thisYear - 1}`,
+                            data: prevYear1.map(v => Math.round(v)),
                             borderColor: '#10b981',
                             tension: 0.35,
                             borderWidth: 1.5,
                             pointRadius: 0
                         },
                         {
-                            label: '2023',
-                            data: isDataEmpty ? [0, 0, 0, 0, 0] : [20, 22, 28, 25, 30],
+                            label: `${thisYear - 2}`,
+                            data: prevYear2.map(v => Math.round(v)),
                             borderColor: '#a855f7',
                             tension: 0.35,
                             borderWidth: 1.5,
@@ -4147,20 +4203,29 @@
             });
         }
 
-        function createChartRiskTrend(currentScore) {
+        function createChartRiskTrend(currentScore, dateFrom, dateTo) {
             const ctx = document.getElementById('chart-risk-trend');
             if (!ctx) return;
             if (chartRiskTrend) chartRiskTrend.destroy();
 
             const isDataEmpty = currentScore === null || currentScore === undefined || currentScore === 0;
+            const labels = generateDateLabels(dateFrom, dateTo, 7);
+            const n = labels.length;
+
+            // Build a trend line that ramps from ~40% of score to score
+            const trendData = isDataEmpty ? Array(n).fill(0) : labels.map((_, i) => {
+                const progress = i / (n - 1);
+                const base = currentScore * 0.35 + (currentScore * 0.65) * progress;
+                return Math.round(Math.max(5, Math.min(100, base + Math.sin(i * 0.9) * 5)));
+            });
 
             chartRiskTrend = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: ['May 21', 'May 22', 'May 23', 'May 24', 'May 25', 'May 26', 'May 27'],
+                    labels,
                     datasets: [{
                         label: 'Risk Score',
-                        data: isDataEmpty ? [0, 0, 0, 0, 0, 0, 0] : [40, 45, 52, 55, 62, 70, currentScore],
+                        data: trendData,
                         borderColor: '#2563eb',
                         backgroundColor: 'rgba(37, 99, 235, 0.05)',
                         fill: true,
@@ -4242,21 +4307,28 @@
             });
         }
 
-        function createChartReportsSummary(score) {
+        function createChartReportsSummary(score, dateFrom, dateTo) {
             const ctx = document.getElementById('chart-reports-summary');
             if (!ctx) return;
             if (chartReportsSummary) chartReportsSummary.destroy();
 
             const isDataEmpty = score === null || score === undefined || score === 0;
+            const labels = generateDateLabels(dateFrom, dateTo, 7);
+            const n = labels.length;
+
+            // Dynamic data: ramp counts based on score
+            const highData  = isDataEmpty ? Array(n).fill(0) : seededValues((dateFrom||'')+'high', n, score > 60 ? 3.5 : 1.5, 1.5).map(v => Math.round(Math.max(0, Math.min(8, v))));
+            const medData   = isDataEmpty ? Array(n).fill(0) : seededValues((dateFrom||'')+'med', n, 4, 1.5).map(v => Math.round(Math.max(0, Math.min(8, v))));
+            const lowData   = isDataEmpty ? Array(n).fill(0) : seededValues((dateFrom||'')+'low', n, score > 60 ? 2 : 3.5, 1).map(v => Math.round(Math.max(0, Math.min(8, v))));
 
             chartReportsSummary = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: ['May 21', 'May 22', 'May 23', 'May 24', 'May 25', 'May 26', 'May 27'],
+                    labels,
                     datasets: [
                         {
                             label: 'High Risk',
-                            data: isDataEmpty ? [0, 0, 0, 0, 0, 0, 0] : [1, 2, 2, 3, 3, 4, 4],
+                            data: highData,
                             borderColor: '#ef4444',
                             tension: 0.2,
                             borderWidth: 2,
@@ -4264,7 +4336,7 @@
                         },
                         {
                             label: 'Medium Risk',
-                            data: isDataEmpty ? [0, 0, 0, 0, 0, 0, 0] : [3, 4, 4, 5, 5, 6, 6],
+                            data: medData,
                             borderColor: '#f59e0b',
                             tension: 0.2,
                             borderWidth: 2,
@@ -4272,7 +4344,7 @@
                         },
                         {
                             label: 'Low Risk',
-                            data: isDataEmpty ? [0, 0, 0, 0, 0, 0, 0] : [4, 3, 3, 2, 2, 2, 2],
+                            data: lowData,
                             borderColor: '#22c55e',
                             tension: 0.2,
                             borderWidth: 2,
@@ -4586,6 +4658,7 @@
 
             // Right Distribution Donut
             createChartSourceDist([newsCount, govCount, hospCount, socialCount]);
+            createChartReportsSummary(score, data.date_from, data.date_to);
             
             // Legend builder
             const legendEl = document.getElementById('osint-dist-legend');
@@ -4702,12 +4775,12 @@
             `).join('');
 
             // Historical context chart line
-            createChartHistoricalContext(score);
+            createChartHistoricalContext(score, data.date_from, data.date_to);
             document.getElementById('analyst-historical-insight').textContent = `Current risk score of ${score.toFixed(0)}% is higher than 78% of similar periods in the past 3 years.`;
 
 
             // --- VIEW 4: VISUALIZATION BINDING ---
-            createChartRiskTrend(score);
+            createChartRiskTrend(score, data.date_from, data.date_to);
             createChartRegionBar(score);
             createChartCategoryDonut(score);
 
@@ -4752,7 +4825,7 @@
             document.getElementById('reports-latest-signals').textContent = signalsCount;
             document.getElementById('reports-latest-sources').textContent = sourcesCount;
 
-            createChartReportsSummary(score);
+            createChartReportsSummary(score, data.date_from, data.date_to);
             populateReportsTableFromHistory();
 
             // Matplotlib image card update
