@@ -3,13 +3,16 @@
 The Silent Outbreak Predictor — Early Warning Surveillance Dashboard is an AI-powered public health tool designed to detect infectious disease outbreaks before they hit hospitals.
 
 Here is the system :
+
 Pre-Diagnostic Data: It scans "silent" signals—like wastewater, social media chatter, mobility data, and search trends—rather than waiting for delayed clinical diagnoses.
+
 AI Forecasting: It uses advanced machine learning models to predict the timing and trajectory of potential pathogens.
+
 Geospatial Mapping: It pinpoints exact geographic hotspots to visualize where a disease is likely to cluster and spread.
 
----
-
 Automated Alerts: It issues tiered warnings (Informational, Warning, Critical) to give health authorities a critical head start on containment and resource allocation.
+
+
 **🌐 Live Demo Website:** **[https://silent-outbreak-predictor.onrender.com/](https://silent-outbreak-predictor.onrender.com/)**
 
 ---
