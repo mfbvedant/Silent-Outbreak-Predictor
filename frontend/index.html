@@ -4209,31 +4209,45 @@
             if (chartRiskTrend) chartRiskTrend.destroy();
 
             const isDataEmpty = currentScore === null || currentScore === undefined || currentScore === 0;
-            const labels = generateDateLabels(dateFrom, dateTo, 7);
-            const n = labels.length;
 
-            // Build a trend line that ramps from ~40% of score to score
-            const trendData = isDataEmpty ? Array(n).fill(0) : labels.map((_, i) => {
-                const progress = i / (n - 1);
-                const base = currentScore * 0.35 + (currentScore * 0.65) * progress;
-                return Math.round(Math.max(5, Math.min(100, base + Math.sin(i * 0.9) * 5)));
-            });
+            // --- USE REAL HISTORY DATA ---
+            // Collect all past runs (newest-first in runHistory, reverse for chronological)
+            let histLabels = [];
+            let histData = [];
+            if (!isDataEmpty && runHistory.length > 0) {
+                const chronological = [...runHistory].reverse(); // oldest first
+                chronological.forEach(run => {
+                    const ts = run.timestamp || '';
+                    const label = ts.split(',')[0] || ts; // date part
+                    histLabels.push(label);
+                    histData.push(run.confidence_score || 0);
+                });
+            }
+
+            // If only 1 data point or none, fall back to date-range labels with the single value
+            if (histLabels.length <= 1) {
+                histLabels = generateDateLabels(dateFrom, dateTo, 7);
+                // Put the real score at the last position, fill others with 0
+                histData = Array(histLabels.length).fill(null);
+                if (!isDataEmpty) histData[histData.length - 1] = currentScore;
+            }
 
             chartRiskTrend = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels,
+                    labels: histLabels,
                     datasets: [{
                         label: 'Risk Score',
-                        data: trendData,
+                        data: histData,
                         borderColor: '#2563eb',
                         backgroundColor: 'rgba(37, 99, 235, 0.05)',
                         fill: true,
                         tension: 0.3,
                         borderWidth: 3,
-                        pointRadius: isDataEmpty ? 0 : 5,
-                        pointHoverRadius: isDataEmpty ? 0 : 7,
-                        pointBackgroundColor: '#2563eb'
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#2563eb',
+                        spanGaps: true
                     }]
                 },
                 options: {
@@ -4577,6 +4591,70 @@
         }
 
         // ═══════════════════════════════════════════════════════════
+        // REASONING TEXT PARSER — extracts real metrics from AI output
+        // ═══════════════════════════════════════════════════════════
+        function parseReasoningMetrics(reasoning, disease) {
+            const text = (reasoning || '').toLowerCase();
+            const m = {};
+
+            // Extract numbers mentioned near keywords
+            const caseMatch = text.match(/(\d[\d,]*)\s*(?:cases?|infections?|confirmed|positive|patients?)/i);
+            m.casesFound = caseMatch ? parseInt(caseMatch[1].replace(/,/g, '')) : 0;
+            const deathMatch = text.match(/(\d[\d,]*)\s*(?:deaths?|fatalities|mortality|died)/i);
+            m.deathsFound = deathMatch ? parseInt(deathMatch[1].replace(/,/g, '')) : 0;
+            const hospMatch = text.match(/(\d[\d,]*)\s*(?:hospital|admitted|admission)/i);
+            m.hospitalized = hospMatch ? parseInt(hospMatch[1].replace(/,/g, '')) : 0;
+
+            // Count source mentions
+            const sourceKeywords = {
+                news: ['news', 'media', 'report', 'press', 'article', 'newspaper', 'journal', 'reuters', 'bbc', 'times'],
+                gov: ['government', 'ministry', 'who', 'cdc', 'promed', 'idsp', 'health department', 'official', 'bulletin', 'gazette'],
+                hosp: ['hospital', 'clinic', 'opd', 'medical center', 'admission', 'ward', 'icu', 'clinical'],
+                social: ['social', 'twitter', 'forum', 'community', 'public', 'rumor', 'trend', 'crowd']
+            };
+            m.sourceHits = { news: 0, gov: 0, hosp: 0, social: 0 };
+            Object.entries(sourceKeywords).forEach(([key, words]) => {
+                words.forEach(w => { const re = new RegExp(w, 'gi'); const matches = text.match(re); if (matches) m.sourceHits[key] += matches.length; });
+            });
+            const totalHits = m.sourceHits.news + m.sourceHits.gov + m.sourceHits.hosp + m.sourceHits.social;
+
+            // Signal keywords
+            const signalWords = ['outbreak', 'surge', 'spike', 'cluster', 'epidemic', 'alert', 'warning',
+                                 'severe', 'acute', 'mortality', 'spreading', 'emergency', 'pandemic', 'endemic'];
+            m.signals = signalWords.filter(w => text.includes(w));
+
+            // Anomaly keywords
+            const anomalyWords = ['unusual', 'anomal', 'unexpected', 'unprecedented', 'abnormal', 'strange', 'rare', 'new strain', 'mutant', 'novel'];
+            m.anomalies = anomalyWords.filter(w => text.includes(w));
+
+            // Derive counts (use real data if parsing found values, otherwise derive from score)
+            const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 10);
+            m.reportsCount = Math.max(totalHits, sentences.length, 4);
+            m.sourcesCount = Math.max(Object.values(m.sourceHits).filter(v => v > 0).length * 3, 4);
+            m.signalsCount = Math.max(m.signals.length, 1);
+            m.anomaliesCount = m.anomalies.length;
+
+            // Confidence breakdown from content analysis
+            const hasGovernment = m.sourceHits.gov > 0;
+            const hasMultipleSources = Object.values(m.sourceHits).filter(v => v > 0).length >= 2;
+            const hasCaseCounts = m.casesFound > 0;
+            const hasRecentData = text.includes('2025') || text.includes('2026') || text.includes('recent') || text.includes('current');
+
+            m.breakdownWeights = {
+                sourceReliability: hasGovernment ? 35 : 20,
+                signalConsistency: hasMultipleSources ? 25 : 15,
+                dataRecency: hasRecentData ? 20 : 10,
+                historicalPatterns: 15,
+                modelConfidence: hasCaseCounts ? 5 : 40 - (hasGovernment ? 15 : 0) - (hasMultipleSources ? 10 : 0) - (hasRecentData ? 10 : 0)
+            };
+            // Normalize to 100
+            const wTotal = Object.values(m.breakdownWeights).reduce((s, v) => s + v, 0);
+            Object.keys(m.breakdownWeights).forEach(k => m.breakdownWeights[k] = Math.round(m.breakdownWeights[k] / wTotal * 100));
+
+            return m;
+        }
+
+        // ═══════════════════════════════════════════════════════════
         // DYNAMIC DATA RENDERING CROSS-VIEWS
         // ═══════════════════════════════════════════════════════════
         function renderAnalysisData(data, immediate = false) {
@@ -4590,6 +4668,7 @@
             const region = data.region || 'Pune, Maharashtra';
             
             const risk = getRiskLevel(score);
+            const metrics = parseReasoningMetrics(data.explainable_reasoning, disease);
 
             // Sync Header Dropdown labels
             document.getElementById('label-location').textContent = region;
@@ -4609,11 +4688,11 @@
             donutCircle.setAttribute('stroke-dashoffset', offset);
             document.getElementById('dash-donut-val').textContent = score.toFixed(0) + '%';
 
-            // Mini stats generator
-            const sourcesCount = Math.max(8, Math.floor(score * 0.28));
-            const reportsCount = Math.max(12, Math.floor(score * 0.88));
-            const signalsCount = Math.max(3, Math.floor(score * 0.1));
-            const anomaliesCount = Math.max(1, Math.floor(score * 0.04));
+            // Mini stats from parsed reasoning
+            const sourcesCount = metrics.sourcesCount;
+            const reportsCount = metrics.reportsCount;
+            const signalsCount = metrics.signalsCount;
+            const anomaliesCount = metrics.anomaliesCount;
 
             document.getElementById('dash-stat-sources').textContent = sourcesCount;
             document.getElementById('dash-stat-reports').textContent = reportsCount;
@@ -4644,10 +4723,12 @@
 
             // --- VIEW 2: OSINT INTELLIGENCE FEED BINDING ---
             const totalOSINTCount = reportsCount;
-            const newsCount = Math.floor(totalOSINTCount * 0.61);
-            const govCount = Math.floor(totalOSINTCount * 0.23);
-            const hospCount = Math.floor(totalOSINTCount * 0.1);
-            const socialCount = totalOSINTCount - newsCount - govCount - hospCount;
+            // Use real source-hit ratios from reasoning text
+            const hitTotal = metrics.sourceHits.news + metrics.sourceHits.gov + metrics.sourceHits.hosp + metrics.sourceHits.social || 1;
+            const newsCount = Math.max(1, Math.round(totalOSINTCount * (metrics.sourceHits.news || 1) / hitTotal));
+            const govCount = Math.max(1, Math.round(totalOSINTCount * (metrics.sourceHits.gov || 1) / hitTotal));
+            const hospCount = Math.max(1, Math.round(totalOSINTCount * (metrics.sourceHits.hosp || 1) / hitTotal));
+            const socialCount = Math.max(0, totalOSINTCount - newsCount - govCount - hospCount);
 
             // Sources horizontal count cards
             document.getElementById('osint-card-total').textContent = totalOSINTCount;
@@ -4735,15 +4816,16 @@
             document.getElementById('analyst-reasoning-para').textContent = data.explainable_reasoning;
             document.getElementById('analyst-conclusion-text').textContent = `The convergence of clinical, environmental, and public health indicators suggests ${risk.text.toLowerCase()}. Immediate monitoring and alert loops are activated for ${region}.`;
 
-            // Confidence breakdown charts
-            const breakdownData = [30, 25, 20, 15, 10];
+            // Confidence breakdown charts — derived from reasoning analysis
+            const bw = metrics.breakdownWeights;
+            const breakdownData = [bw.sourceReliability, bw.signalConsistency, bw.dataRecency, bw.historicalPatterns, bw.modelConfidence];
             createChartConfidenceBreakdown(breakdownData);
             document.getElementById('analyst-breakdown-legend').innerHTML = `
-                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#2563eb"></div> Source Reliability</div><strong>30%</strong></div>
-                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#3b82f6"></div> Signal Consistency</div><strong>25%</strong></div>
-                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#60a5fa"></div> Data Recency</div><strong>20%</strong></div>
-                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#93c5fd"></div> Historical Patterns</div><strong>15%</strong></div>
-                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#bfdbfe"></div> Model Confidence</div><strong>10%</strong></div>
+                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#2563eb"></div> Source Reliability</div><strong>${bw.sourceReliability}%</strong></div>
+                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#3b82f6"></div> Signal Consistency</div><strong>${bw.signalConsistency}%</strong></div>
+                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#60a5fa"></div> Data Recency</div><strong>${bw.dataRecency}%</strong></div>
+                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#93c5fd"></div> Historical Patterns</div><strong>${bw.historicalPatterns}%</strong></div>
+                <div class="donut-legend-item"><div class="donut-legend-left"><div class="donut-legend-dot" style="background:#bfdbfe"></div> Model Confidence</div><strong>${bw.modelConfidence}%</strong></div>
             `;
 
             // Contributing factors list
@@ -4784,11 +4866,19 @@
             createChartRegionBar(score);
             createChartCategoryDonut(score);
 
-            document.getElementById('viz-trend-change').textContent = score > 50 ? '▲ 45%' : '▼ 10%';
-            document.getElementById('viz-trend-change').className = `risk-stat-value ${score > 50 ? 'red' : 'green'}`;
-            document.getElementById('viz-trend-highest').textContent = score.toFixed(0) + '%';
-            document.getElementById('viz-trend-lowest').textContent = '40%';
-            document.getElementById('viz-trend-average').textContent = Math.round((score + 40) / 2) + '%';
+            // Compute real trend stats from history
+            const allScores = runHistory.map(r => r.confidence_score || 0);
+            const highestScore = allScores.length > 0 ? Math.max(...allScores) : score;
+            const lowestScore = allScores.length > 0 ? Math.min(...allScores) : score;
+            const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a,b) => a + b, 0) / allScores.length) : score;
+            const prevScore = allScores.length > 1 ? allScores[1] : score; // previous run
+            const trendChange = prevScore > 0 ? Math.round(((score - prevScore) / prevScore) * 100) : 0;
+            const trendUp = trendChange >= 0;
+            document.getElementById('viz-trend-change').textContent = `${trendUp ? '▲' : '▼'} ${Math.abs(trendChange)}%`;
+            document.getElementById('viz-trend-change').className = `risk-stat-value ${trendUp ? 'red' : 'green'}`;
+            document.getElementById('viz-trend-highest').textContent = highestScore.toFixed(0) + '%';
+            document.getElementById('viz-trend-lowest').textContent = lowestScore.toFixed(0) + '%';
+            document.getElementById('viz-trend-average').textContent = avgScore + '%';
 
 
             // --- VIEW 5: REPORTS BINDING ---
