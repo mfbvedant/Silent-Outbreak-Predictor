@@ -4262,8 +4262,17 @@
             if (!isDataEmpty && validHistory.length > 1) {
                 const chronological = [...validHistory].reverse();
                 chronological.forEach(run => {
-                    const ts = run.timestamp || '';
-                    const label = ts.split(',')[0] || ts;
+                    const end = run.date_to ? new Date(run.date_to) : null;
+                    let label = '';
+                    if (end && !isNaN(end)) {
+                        const m = (end.getMonth() + 1).toString().padStart(2, '0');
+                        const d = end.getDate().toString().padStart(2, '0');
+                        const y = end.getFullYear();
+                        label = `${m}/${d}/${y}`;
+                    } else {
+                        const ts = run.timestamp || '';
+                        label = ts.split(',')[0] || ts;
+                    }
                     histLabels.push(label);
                     histData.push(run.confidence_score);
                 });
