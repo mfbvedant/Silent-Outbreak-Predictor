@@ -4157,6 +4157,18 @@
             return labels;
         }
 
+        function getTimelineDateStr(baseDateStr, daysMinus, timeStr) {
+            const d = baseDateStr ? new Date(baseDateStr) : new Date();
+            if (isNaN(d)) return 'MAY ' + (27 - daysMinus) + ' - ' + timeStr;
+            
+            // Subtract days
+            d.setDate(d.getDate() - daysMinus);
+            const monthStr = d.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+            const dayStr = d.getDate();
+            const yearStr = d.getFullYear();
+            return `${monthStr} ${dayStr}, ${yearStr} - ${timeStr}`;
+        }
+
         // Seeded-random-ish deterministic values from a date string seed
         function seededValues(seed, count, base, variance) {
             const vals = [];
@@ -6037,31 +6049,32 @@
                 `;
                 initModalTrendsChart();
             } else if (type === 'timeline') {
+                const dateTo = displayedData ? displayedData.date_to : null;
                 titleEl.textContent = 'Alert Timeline';
                 bodyEl.innerHTML = `
                     <div style="width: 100%; max-height: 300px; overflow-y: auto; padding: 10px 5px; text-align: left;">
                         <div class="modal-timeline" style="position: relative; padding-left: 24px; border-left: 2px solid #e2e8f0; margin-left: 12px; display: flex; flex-direction: column; gap: 20px;">
                             <div style="position: relative;">
                                 <div style="position: absolute; left: -30px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: #ef4444; border: 2px solid white; box-shadow: 0 0 0 2px #fca5a5;"></div>
-                                <div style="font-size: 0.68rem; color: #ef4444; font-weight: 700; letter-spacing: 0.5px;">MAY 27 - 10:42 AM</div>
+                                <div style="font-size: 0.68rem; color: #ef4444; font-weight: 700; letter-spacing: 0.5px;">${getTimelineDateStr(dateTo, 0, '10:42 AM')}</div>
                                 <div style="font-size: 0.82rem; font-weight: 600; color: #0f172a; margin-top: 2px; line-height: 1.4;">Spike in local clinic admissions for respiratory distress</div>
                                 <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">Source: Pune Municipal Corporation Bulletin | Subdivision Hotspots</div>
                             </div>
                             <div style="position: relative;">
                                 <div style="position: absolute; left: -30px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: #f59e0b; border: 2px solid white; box-shadow: 0 0 0 2px #fde047;"></div>
-                                <div style="font-size: 0.68rem; color: #f59e0b; font-weight: 700; letter-spacing: 0.5px;">MAY 26 - 03:15 PM</div>
+                                <div style="font-size: 0.68rem; color: #f59e0b; font-weight: 700; letter-spacing: 0.5px;">${getTimelineDateStr(dateTo, 1, '03:15 PM')}</div>
                                 <div style="font-size: 0.82rem; font-weight: 600; color: #0f172a; margin-top: 2px; line-height: 1.4;">Syndromic signals match viral influenza clusters</div>
                                 <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">Source: Local Clinic Outpatient Survey | Patient screening checklists active</div>
                             </div>
                             <div style="position: relative;">
                                 <div style="position: absolute; left: -30px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: #3b82f6; border: 2px solid white; box-shadow: 0 0 0 2px #93c5fd;"></div>
-                                <div style="font-size: 0.68rem; color: #3b82f6; font-weight: 700; letter-spacing: 0.5px;">MAY 25 - 09:30 AM</div>
+                                <div style="font-size: 0.68rem; color: #3b82f6; font-weight: 700; letter-spacing: 0.5px;">${getTimelineDateStr(dateTo, 2, '09:30 AM')}</div>
                                 <div style="font-size: 0.82rem; font-weight: 600; color: #0f172a; margin-top: 2px; line-height: 1.4;">Water quality alert issued for eastern sub-divisions</div>
                                 <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">Source: Water Sanitation Board | Turbidity alerts flagged</div>
                             </div>
                             <div style="position: relative;">
                                 <div style="position: absolute; left: -30px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: #22c55e; border: 2px solid white; box-shadow: 0 0 0 2px #86efac;"></div>
-                                <div style="font-size: 0.68rem; color: #22c55e; font-weight: 700; letter-spacing: 0.5px;">MAY 24 - 05:10 PM</div>
+                                <div style="font-size: 0.68rem; color: #22c55e; font-weight: 700; letter-spacing: 0.5px;">${getTimelineDateStr(dateTo, 3, '05:10 PM')}</div>
                                 <div style="font-size: 0.82rem; font-weight: 600; color: #0f172a; margin-top: 2px; line-height: 1.4;">Vector surveillance confirms regular seasonal indices</div>
                                 <div style="font-size: 0.72rem; color: #64748b; margin-top: 2px;">Source: Public Health Entomological Survey | Mosquito density checks normal</div>
                             </div>
@@ -6241,7 +6254,13 @@
             const slider = document.getElementById('progression-slider');
             const label = document.getElementById('progression-day-label');
             if (slider) slider.value = day;
-            if (label) label.textContent = `Day ${day}`;
+            if (label) {
+                const dateFrom = displayedData ? displayedData.date_from : null;
+                const dateTo = displayedData ? displayedData.date_to : null;
+                const labels = generateDateLabels(dateFrom, dateTo, 7);
+                const datePart = labels[day - 1] ? ` (${labels[day - 1]})` : '';
+                label.textContent = `Day ${day}${datePart}`;
+            }
 
             const mapPaths = ['pimpri', 'shirur', 'mulshi', 'pune', 'haveli', 'daund'];
             const baseScore = displayedData ? displayedData.confidence_score || 55 : 55;
@@ -6348,6 +6367,31 @@
             const ctx = canvasEl.getContext('2d');
 
             const baseScore = displayedData ? displayedData.confidence_score || 55 : 55;
+            const dateFrom = displayedData ? displayedData.date_from : null;
+            const dateTo = displayedData ? displayedData.date_to : null;
+            const labels = generateDateLabels(dateFrom, dateTo, 7);
+            const n = labels.length;
+
+            const seed = (dateFrom || '') + (dateTo || '');
+
+            const generateProgression = (factorSeed, finalVal, basePercent) => {
+                const baseVals = seededValues(seed + factorSeed, n, finalVal * basePercent, finalVal * 0.2);
+                const dataPoints = baseVals.map((v, i) => {
+                    if (n <= 1) return finalVal;
+                    const progress = i / (n - 1);
+                    const blended = v * (1 - progress * 0.5) + finalVal * progress * 0.5;
+                    return Math.round(Math.max(5, Math.min(100, blended)));
+                });
+                if (n > 0) {
+                    dataPoints[n - 1] = finalVal; // pin final value
+                }
+                return dataPoints;
+            };
+
+            const respiratoryData = generateProgression('resp', Math.round(baseScore * 0.88), 0.75);
+            const feverData = generateProgression('fever', Math.round(baseScore * 0.72), 0.6);
+            const waterData = generateProgression('water', Math.round(baseScore * 0.35), 0.5);
+            const opdData = generateProgression('opd', Math.round(baseScore * 0.94), 0.8);
 
             if (chartModalTrends) {
                 chartModalTrends.destroy();
@@ -6357,11 +6401,11 @@
             chartModalTrends = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: ['May 21', 'May 22', 'May 23', 'May 24', 'May 25', 'May 26', 'May 27'],
+                    labels: labels,
                     datasets: [
                         {
                             label: 'Respiratory Distress',
-                            data: [35, 42, 38, 45, 50, 52, Math.round(baseScore * 0.88)],
+                            data: respiratoryData,
                             borderColor: '#3b82f6',
                             tension: 0.35,
                             borderWidth: 2,
@@ -6369,7 +6413,7 @@
                         },
                         {
                             label: 'Fever Reports',
-                            data: [20, 25, 30, 28, 35, 40, Math.round(baseScore * 0.72)],
+                            data: feverData,
                             borderColor: '#ef4444',
                             tension: 0.35,
                             borderWidth: 2,
@@ -6377,7 +6421,7 @@
                         },
                         {
                             label: 'Water Contamination',
-                            data: [10, 12, 11, 15, 20, 18, Math.round(baseScore * 0.35)],
+                            data: waterData,
                             borderColor: '#f59e0b',
                             tension: 0.35,
                             borderWidth: 2,
@@ -6385,7 +6429,7 @@
                         },
                         {
                             label: 'OPD Admissions',
-                            data: [40, 45, 42, 48, 55, 60, Math.round(baseScore * 0.94)],
+                            data: opdData,
                             borderColor: '#ec4899',
                             tension: 0.35,
                             borderWidth: 2,
