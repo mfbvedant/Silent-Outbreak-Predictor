@@ -4058,6 +4058,12 @@
             try {
                 const stored = localStorage.getItem(historyKey);
                 runHistory = stored ? JSON.parse(stored) : [];
+                // Normalize decimal confidence scores to percentage scale
+                runHistory.forEach(run => {
+                    if (run && run.confidence_score > 0 && run.confidence_score <= 1.0) {
+                        run.confidence_score = run.confidence_score * 100;
+                    }
+                });
             } catch (e) {
                 console.error("Failed to load user history:", e);
                 runHistory = [];
@@ -4655,7 +4661,7 @@
             if (activeView === 'dashboard') {
                 h1.textContent = dict['title-dashboard'];
                 sub.textContent = dict['sub-dashboard'];
-                actionLabel.textContent = currentLang === 'English' ? 'Refresh Data' : (currentLang === 'Marathi' ? 'डेटा रीफ्रेश करा' : 'डेटा रीफ्रेश करें');
+                actionLabel.textContent = currentLang === 'Hindi' ? 'डेटा रीफ्रेश करें' : (currentLang === 'Marathi' ? 'डेटा रीफ्रेश करा' : 'Refresh Data');
                 actionBtn.style.display = 'inline-flex';
             } else if (activeView === 'history') {
                 h1.textContent = dict['title-history'];
@@ -4664,27 +4670,27 @@
             } else if (activeView === 'osint') {
                 h1.textContent = dict['title-osint'];
                 sub.textContent = dict['sub-osint'];
-                actionLabel.textContent = currentLang === 'English' ? 'Refresh Feed' : (currentLang === 'Marathi' ? 'फीड रीफ्रेश करा' : 'फीड रीफ्रेश करें');
+                actionLabel.textContent = currentLang === 'Hindi' ? 'फीड रीफ्रेश करें' : (currentLang === 'Marathi' ? 'फीड रीफ्रेश करा' : 'Refresh Feed');
                 actionBtn.style.display = 'inline-flex';
             } else if (activeView === 'analyst') {
                 h1.textContent = dict['title-analyst'];
                 sub.textContent = dict['sub-analyst'];
-                actionLabel.textContent = currentLang === 'English' ? 'Export Report' : (currentLang === 'Marathi' ? 'अहवाल निर्यात करा' : 'रिपोर्ट निर्यात करें');
+                actionLabel.textContent = currentLang === 'Hindi' ? 'रिपोर्ट निर्यात करें' : (currentLang === 'Marathi' ? 'अहवाल निर्यात करा' : 'Export Report');
                 actionBtn.style.display = 'inline-flex';
             } else if (activeView === 'visualization') {
                 h1.textContent = dict['title-visualization'];
                 sub.textContent = dict['sub-visualization'];
-                actionLabel.textContent = currentLang === 'English' ? 'Download Image' : (currentLang === 'Marathi' ? 'इमेज डाउनलोड करा' : 'इमेज डाउनलोड करें');
+                actionLabel.textContent = currentLang === 'Hindi' ? 'इमेज डाउनलोड करें' : (currentLang === 'Marathi' ? 'इमेज डाउनलोड करा' : 'Download Image');
                 actionBtn.style.display = 'inline-flex';
             } else if (activeView === 'reports') {
                 h1.textContent = dict['title-reports'];
                 sub.textContent = dict['sub-reports'];
-                actionLabel.textContent = currentLang === 'English' ? 'Export PDF' : (currentLang === 'Marathi' ? 'पीडीएफ निर्यात करा' : 'पीडीएफ निर्यात करें');
+                actionLabel.textContent = currentLang === 'Hindi' ? 'पीडीएफ निर्यात करें' : (currentLang === 'Marathi' ? 'पीडीएफ निर्यात करा' : 'Export PDF');
                 actionBtn.style.display = 'inline-flex';
             } else if (activeView === 'settings') {
                 h1.textContent = dict['title-settings'];
                 sub.textContent = dict['sub-settings'];
-                actionLabel.textContent = currentLang === 'English' ? 'Save Changes' : (currentLang === 'Marathi' ? 'बदल जतन करा' : 'बदलाव सुरक्षित करें');
+                actionLabel.textContent = currentLang === 'Hindi' ? 'बदलाव सुरक्षित करें' : (currentLang === 'Marathi' ? 'बदल जतन करा' : 'Save Changes');
                 actionBtn.style.display = 'inline-flex';
             }
         }
@@ -5745,6 +5751,9 @@
                 document.getElementById('pipeline-time').textContent = `Time: ${Math.floor(elapsedSecs/60).toString().padStart(2,'0')}:${(elapsedSecs%60).toString().padStart(2,'0')}m`;
 
                 // Add to history logs
+                if (result && result.confidence_score > 0 && result.confidence_score <= 1.0) {
+                    result.confidence_score = result.confidence_score * 100;
+                }
                 result.timestamp = new Date().toLocaleString();
                 runHistory.unshift(result);
                 updateHistoryTableUI();
@@ -5870,7 +5879,10 @@
                 return;
             }
 
-            const score = data.confidence_score || 0;
+            let score = data.confidence_score || 0;
+            if (score > 0 && score <= 1.0) {
+                score = score * 100;
+            }
             const disease = data.disease && data.disease !== 'Any / Auto-detect' ? data.disease : 'Severe Fever Outbreak';
             const region = data.region || 'Pune, Maharashtra';
             
