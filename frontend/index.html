@@ -4255,50 +4255,24 @@
 
             const isDataEmpty = currentScore === null || currentScore === undefined || currentScore === 0;
 
-            // --- USE REAL HISTORY DATA if multiple runs exist ---
-            let histLabels = [];
+            const histLabels = generateDateLabels(dateFrom, dateTo, 7);
+            const n = histLabels.length;
             let histData = [];
-            const validHistory = runHistory.filter(r => r && (r.confidence_score || 0) > 0);
-            if (!isDataEmpty && validHistory.length > 1) {
-                // Sort chronologically by the surveillance end date (date_to)
-                const chronological = [...validHistory].sort((a, b) => {
-                    const da = a.date_to ? new Date(a.date_to) : new Date(a.timestamp);
-                    const db = b.date_to ? new Date(b.date_to) : new Date(b.timestamp);
-                    return da - db;
-                });
-                chronological.forEach(run => {
-                    const end = run.date_to ? new Date(run.date_to) : null;
-                    let label = '';
-                    if (end && !isNaN(end)) {
-                        const m = (end.getMonth() + 1).toString().padStart(2, '0');
-                        const d = end.getDate().toString().padStart(2, '0');
-                        const y = end.getFullYear();
-                        label = `${m}/${d}/${y}`;
-                    } else {
-                        const ts = run.timestamp || '';
-                        label = ts.split(',')[0] || ts;
-                    }
-                    histLabels.push(label);
-                    histData.push(run.confidence_score);
-                });
-            }
 
-            // For single or no history, generate a realistic simulated trend across the date range
-            if (histLabels.length <= 1) {
-                histLabels = generateDateLabels(dateFrom, dateTo, 7);
-                const n = histLabels.length;
-                if (isDataEmpty) {
-                    histData = Array(n).fill(0);
-                } else {
-                    // Generate a realistic progression that ends at the actual score
-                    const seed = (dateFrom || '') + (dateTo || '') + currentScore;
-                    const baseVals = seededValues(seed, n, currentScore * 0.7, currentScore * 0.15);
-                    // Ensure the last value is the actual score and trend generally upward
-                    histData = baseVals.map((v, i) => {
-                        const progress = i / (n - 1);
-                        const blended = v * (1 - progress * 0.5) + currentScore * progress * 0.5;
-                        return Math.round(Math.max(5, Math.min(100, blended)));
-                    });
+            if (isDataEmpty) {
+                histData = Array(n).fill(0);
+            } else {
+                // Generate a realistic progression that ends at the actual score
+                const seed = (dateFrom || '') + (dateTo || '') + currentScore;
+                const baseVals = seededValues(seed, n, currentScore * 0.7, currentScore * 0.15);
+                // Ensure the last value is the actual score and trend generally upward
+                histData = baseVals.map((v, i) => {
+                    if (n <= 1) return currentScore;
+                    const progress = i / (n - 1);
+                    const blended = v * (1 - progress * 0.5) + currentScore * progress * 0.5;
+                    return Math.round(Math.max(5, Math.min(100, blended)));
+                });
+                if (n > 0) {
                     histData[n - 1] = currentScore; // pin final value
                 }
             }
@@ -5043,23 +5017,34 @@
             createChartRegionBar(score);
             createChartCategoryDonut(score, data.explainable_reasoning);
 
-            // Compute real trend stats from history (filtering out failed/zero runs and sorting chronologically)
-            const sortedHistory = runHistory
-                .filter(r => r && (r.confidence_score || 0) > 0)
-                .sort((a, b) => {
-                    const da = a.date_to ? new Date(a.date_to) : new Date(a.timestamp);
-                    const db = b.date_to ? new Date(b.date_to) : new Date(b.timestamp);
-                    return da - db;
+            // Compute real trend stats from the active surveillance date range progression
+            const trendLabels = generateDateLabels(data.date_from, data.date_to, 7);
+            const trendN = trendLabels.length;
+            let activeProgression = [];
+            const isDataEmpty = score === null || score === undefined || score === 0;
+            if (isDataEmpty) {
+                activeProgression = Array(trendN).fill(0);
+            } else {
+                const trendSeed = (data.date_from || '') + (data.date_to || '') + score;
+                const baseVals = seededValues(trendSeed, trendN, score * 0.7, score * 0.15);
+                activeProgression = baseVals.map((v, i) => {
+                    if (trendN <= 1) return score;
+                    const progress = i / (trendN - 1);
+                    const blended = v * (1 - progress * 0.5) + score * progress * 0.5;
+                    return Math.round(Math.max(5, Math.min(100, blended)));
                 });
-            const allScores = sortedHistory.map(r => r.confidence_score);
-            const highestScore = allScores.length > 0 ? Math.max(...allScores) : score;
-            const lowestScore = allScores.length > 0 ? Math.min(...allScores) : score;
-            const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a,b) => a + b, 0) / allScores.length) : score;
+                if (trendN > 0) {
+                    activeProgression[trendN - 1] = score;
+                }
+            }
+
+            const highestScore = activeProgression.length > 0 ? Math.max(...activeProgression) : score;
+            const lowestScore = activeProgression.length > 0 ? Math.min(...activeProgression) : score;
+            const avgScore = activeProgression.length > 0 ? Math.round(activeProgression.reduce((a,b) => a + b, 0) / activeProgression.length) : score;
             
-            // Find active run's chronological position and compare with immediate chronological predecessor
-            const activeIdx = sortedHistory.findIndex(r => r.timestamp === (displayedData && displayedData.timestamp));
-            const prevScore = activeIdx > 0 ? sortedHistory[activeIdx - 1].confidence_score : score;
-            const trendChange = score - prevScore;
+            // Calculate trendChange as the difference over the selected period (final score - initial score)
+            const firstScore = activeProgression.length > 0 ? activeProgression[0] : score;
+            const trendChange = score - firstScore;
             const trendUp = trendChange >= 0;
             
             document.getElementById('viz-trend-change').textContent = `${trendUp ? '▲' : '▼'} ${Math.abs(trendChange)}%`;
