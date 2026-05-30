@@ -2280,7 +2280,7 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 22 22 22 12 2"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                                 <h3>Key Factors Contributing to Risk</h3>
                             </div>
-                            <span class="card-header-action">View All</span>
+                            <span class="card-header-action" onclick="toggleFactorsExpand()">View All</span>
                         </div>
                         <div class="card-body">
                             <div class="factors-list" id="analyst-factors-list">
@@ -2295,7 +2295,7 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5v-15z"/></svg>
                                 <h3>Supporting Sources <span>(Top 5)</span></h3>
                             </div>
-                            <span class="card-header-action">View All</span>
+                            <span class="card-header-action" onclick="toggleSourcesExpand()">View All</span>
                         </div>
                         <div class="card-body">
                             <div class="sources-list" id="analyst-sources-list">
@@ -2310,7 +2310,7 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                                 <h3>Historical Context</h3>
                             </div>
-                            <span class="card-header-action">View Trends &rarr;</span>
+                            <span class="card-header-action" onclick="openDetailModal('trends')">View Trends &rarr;</span>
                         </div>
                         <div class="card-body">
                             <div class="chart-box" style="height: 140px;">
@@ -2646,12 +2646,24 @@
                     <div style="display:flex; gap:10px;">
                         <div class="table-search-wrap">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                            <input type="text" class="table-search-input" placeholder="Search reports..." />
+                            <input type="text" class="table-search-input" id="reports-table-search" placeholder="Search reports..." oninput="filterReportsTable()" />
                         </div>
-                        <button class="filter-btn" style="padding: 6px 12px; font-size: 0.78rem;">
+                        <button class="filter-btn" style="padding: 6px 12px; font-size: 0.78rem;" onclick="toggleReportsFilter()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                             Filters
                         </button>
+                    </div>
+                </div>
+
+                <div id="reports-filter-panel" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
+                    <div style="font-weight:600; font-size:13px; color:#1e293b; margin-bottom:8px;">Filter by Risk Level</div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" class="reports-risk-filter" value="critical" checked onchange="filterReportsTable()"> Critical</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" class="reports-risk-filter" value="high" checked onchange="filterReportsTable()"> High</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" class="reports-risk-filter" value="elevated" checked onchange="filterReportsTable()"> Elevated</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" class="reports-risk-filter" value="moderate" checked onchange="filterReportsTable()"> Moderate</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" class="reports-risk-filter" value="low" checked onchange="filterReportsTable()"> Low</label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" class="reports-risk-filter" value="no evidence" checked onchange="filterReportsTable()"> No Evidence</label>
                     </div>
                 </div>
 
@@ -5324,6 +5336,69 @@
             document.querySelectorAll('.osint-source-card').forEach(c => c.classList.remove('active'));
             event.currentTarget.classList.add('active');
             showToast(`Filtering data sources: ${type}`);
+        }
+
+        // --- Analyst View: Expand/Collapse Factors & Sources ---
+        function toggleFactorsExpand() {
+            const el = document.getElementById('analyst-factors-list');
+            const btn = event.currentTarget;
+            if (el.style.maxHeight && el.style.maxHeight !== 'none') {
+                el.style.maxHeight = 'none';
+                el.style.overflow = 'visible';
+                btn.textContent = 'Collapse';
+            } else {
+                el.style.maxHeight = '220px';
+                el.style.overflow = 'hidden';
+                btn.textContent = 'View All';
+            }
+        }
+
+        function toggleSourcesExpand() {
+            const el = document.getElementById('analyst-sources-list');
+            const btn = event.currentTarget;
+            if (el.style.maxHeight && el.style.maxHeight !== 'none') {
+                el.style.maxHeight = 'none';
+                el.style.overflow = 'visible';
+                btn.textContent = 'Collapse';
+            } else {
+                el.style.maxHeight = '220px';
+                el.style.overflow = 'hidden';
+                btn.textContent = 'View All';
+            }
+        }
+
+        // --- Reports table search & filter ---
+        function filterReportsTable() {
+            const query = (document.getElementById('reports-table-search')?.value || '').toLowerCase();
+            
+            // Get checked risk levels
+            const checkedRisks = new Set();
+            document.querySelectorAll('.reports-risk-filter:checked').forEach(cb => checkedRisks.add(cb.value));
+            
+            const rows = document.querySelectorAll('#reports-table-body tr');
+            let visibleCount = 0;
+            rows.forEach(row => {
+                const cells = row.querySelectorAll('td');
+                if (cells.length < 4) { row.style.display = ''; return; } // skip "no data" row
+                
+                const text = row.textContent.toLowerCase();
+                const riskBadge = cells[3]?.textContent?.toLowerCase().trim() || '';
+                
+                const matchesSearch = !query || text.includes(query);
+                const matchesRisk = checkedRisks.size === 0 || checkedRisks.has(riskBadge);
+                
+                if (matchesSearch && matchesRisk) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        function toggleReportsFilter() {
+            const panel = document.getElementById('reports-filter-panel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
         }
 
         // ═══════════════════════════════════════════════════════════
