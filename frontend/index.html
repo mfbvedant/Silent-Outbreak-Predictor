@@ -4246,13 +4246,14 @@
             // --- USE REAL HISTORY DATA if multiple runs exist ---
             let histLabels = [];
             let histData = [];
-            if (!isDataEmpty && runHistory.length > 1) {
-                const chronological = [...runHistory].reverse();
+            const validHistory = runHistory.filter(r => r && (r.confidence_score || 0) > 0);
+            if (!isDataEmpty && validHistory.length > 1) {
+                const chronological = [...validHistory].reverse();
                 chronological.forEach(run => {
                     const ts = run.timestamp || '';
                     const label = ts.split(',')[0] || ts;
                     histLabels.push(label);
-                    histData.push(run.confidence_score || 0);
+                    histData.push(run.confidence_score);
                 });
             }
 
@@ -5016,14 +5017,17 @@
             createChartRegionBar(score);
             createChartCategoryDonut(score, data.explainable_reasoning);
 
-            // Compute real trend stats from history
-            const allScores = runHistory.map(r => r.confidence_score || 0);
+            // Compute real trend stats from history (filtering out failed/zero runs)
+            const allScores = runHistory.map(r => r.confidence_score || 0).filter(s => s > 0);
             const highestScore = allScores.length > 0 ? Math.max(...allScores) : score;
             const lowestScore = allScores.length > 0 ? Math.min(...allScores) : score;
             const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a,b) => a + b, 0) / allScores.length) : score;
+            
+            // Calculate trendChange as percentage point difference relative to previous valid run
             const prevScore = allScores.length > 1 ? allScores[1] : score; // previous run
-            const trendChange = prevScore > 0 ? Math.round(((score - prevScore) / prevScore) * 100) : 0;
+            const trendChange = score - prevScore;
             const trendUp = trendChange >= 0;
+            
             document.getElementById('viz-trend-change').textContent = `${trendUp ? '▲' : '▼'} ${Math.abs(trendChange)}%`;
             document.getElementById('viz-trend-change').className = `risk-stat-value ${trendUp ? 'red' : 'green'}`;
             document.getElementById('viz-trend-highest').textContent = highestScore.toFixed(0) + '%';
