@@ -4260,7 +4260,12 @@
             let histData = [];
             const validHistory = runHistory.filter(r => r && (r.confidence_score || 0) > 0);
             if (!isDataEmpty && validHistory.length > 1) {
-                const chronological = [...validHistory].reverse();
+                // Sort chronologically by the surveillance end date (date_to)
+                const chronological = [...validHistory].sort((a, b) => {
+                    const da = a.date_to ? new Date(a.date_to) : new Date(a.timestamp);
+                    const db = b.date_to ? new Date(b.date_to) : new Date(b.timestamp);
+                    return da - db;
+                });
                 chronological.forEach(run => {
                     const end = run.date_to ? new Date(run.date_to) : null;
                     let label = '';
@@ -5038,14 +5043,22 @@
             createChartRegionBar(score);
             createChartCategoryDonut(score, data.explainable_reasoning);
 
-            // Compute real trend stats from history (filtering out failed/zero runs)
-            const allScores = runHistory.map(r => r.confidence_score || 0).filter(s => s > 0);
+            // Compute real trend stats from history (filtering out failed/zero runs and sorting chronologically)
+            const sortedHistory = runHistory
+                .filter(r => r && (r.confidence_score || 0) > 0)
+                .sort((a, b) => {
+                    const da = a.date_to ? new Date(a.date_to) : new Date(a.timestamp);
+                    const db = b.date_to ? new Date(b.date_to) : new Date(b.timestamp);
+                    return da - db;
+                });
+            const allScores = sortedHistory.map(r => r.confidence_score);
             const highestScore = allScores.length > 0 ? Math.max(...allScores) : score;
             const lowestScore = allScores.length > 0 ? Math.min(...allScores) : score;
             const avgScore = allScores.length > 0 ? Math.round(allScores.reduce((a,b) => a + b, 0) / allScores.length) : score;
             
-            // Calculate trendChange as percentage point difference relative to previous valid run
-            const prevScore = allScores.length > 1 ? allScores[1] : score; // previous run
+            // Find active run's chronological position and compare with immediate chronological predecessor
+            const activeIdx = sortedHistory.findIndex(r => r.timestamp === (displayedData && displayedData.timestamp));
+            const prevScore = activeIdx > 0 ? sortedHistory[activeIdx - 1].confidence_score : score;
             const trendChange = score - prevScore;
             const trendUp = trendChange >= 0;
             
