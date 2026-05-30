@@ -2090,7 +2090,7 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                             <input type="text" class="osint-search-input" id="osint-filter-keywords" placeholder="Search headlines, keywords..." oninput="filterOSINTFeedList()" />
                         </div>
-                        <button class="filter-btn">
+                        <button class="filter-btn" onclick="toggleOSINTFilters()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                             Filters
                         </button>
@@ -2110,9 +2110,17 @@
                     </div>
 
                     <!-- Pagination -->
+                    <div id="osint-filter-panel" style="display:none; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px 16px; margin-bottom:10px;">
+                        <div style="font-weight:600; font-size:13px; color:#1e293b; margin-bottom:8px;">Filter by Priority</div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" class="osint-priority-filter" value="high" checked onchange="applyOSINTFilters()"> <span class="badge high" style="font-size:10px;">High</span></label>
+                            <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" class="osint-priority-filter" value="medium" checked onchange="applyOSINTFilters()"> <span class="badge medium" style="font-size:10px;">Medium</span></label>
+                            <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer;"><input type="checkbox" class="osint-priority-filter" value="low" checked onchange="applyOSINTFilters()"> <span class="badge low" style="font-size:10px;">Low</span></label>
+                        </div>
+                    </div>
                     <div class="pagination-row">
                         <span class="pagination-text" id="osint-pagination-text">Showing 0–0 of 0 results</span>
-                        <button class="load-more-btn">
+                        <button class="load-more-btn" id="osint-load-more-btn" onclick="loadMoreOSINT()">
                             Load More
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><polyline points="6 9 12 15 18 9"/></svg>
                         </button>
@@ -3438,6 +3446,10 @@
         let activeSearchData = null; // Stored results of the LATEST active search
         let displayedData = null;    // Stored results currently being displayed (active or historical)
         let runHistory = [];         // Session logs history array
+        let osintAllItems = [];      // All generated OSINT feed items
+        let osintVisibleCount = 7;   // How many items currently shown
+        let osintActiveTab = 'latest';
+        let osintBookmarked = new Set();
 
         // Charts references
         let chartSourceDist = null;
@@ -5099,50 +5111,168 @@
         }
 
         function populateOSINTPageList(disease, region, reasoning) {
-            const el = document.getElementById('osint-feed-list-container');
             const sentences = reasoning.split(/\.\s+/).filter(s => s.trim().length > 15);
             
             const classes = ['red', 'orange', 'yellow', 'blue', 'green'];
             const avatars = ['🚨', '📈', '⚠️', '📰', '📄'];
-            const sources = ['Pune Municipal Health Bulletin', 'Times of India - Pune', 'Pune Municipal Corporation', 'Maharashtra Health Update', 'Lokmat News'];
+            const defaultSources = [
+                'Municipal Health Bulletin', 'Times of India', 'Municipal Corporation',
+                'State Health Department', 'Lokmat News', 'NDTV Health', 'Health Ministry Update',
+                'WHO Regional Report', 'CDC Weekly Update', 'District Hospital Records'
+            ];
+            const regionWord = (region || '').split(',')[0].trim();
+            const sources = defaultSources.map(s => `${regionWord} ${s}`);
             
             const subdivisions = generateSubdivisions(region);
             const locations = subdivisions.length > 0 ? subdivisions : [region];
 
-            const times = ['2m ago', '15m ago', '32m ago', '45m ago', '1h ago'];
-            const badges = ['high', 'medium', 'low', 'medium', 'low'];
+            // Generate time labels relative to now
+            const timeOffsets = [2, 8, 15, 25, 32, 45, 58, 72, 90, 105, 120, 145, 180, 210, 240, 300, 360, 420, 480, 600];
 
-            let html = '';
-            const loopMax = Math.max(sentences.length, 5);
+            // Build full items array
+            osintAllItems = [];
+            const loopMax = Math.max(sentences.length, 7);
             for (let i = 0; i < loopMax; i++) {
-                const s = sentences[i] || `Surveillance logs scan completed for ${region}. Pathogen indexes active.`;
-                const avatar = avatars[i % avatars.length];
-                const bgCls = classes[i % classes.length];
-                const src = sources[i % sources.length];
-                const loc = locations[i % locations.length];
-                const time = times[i % times.length];
-                const badge = badges[i % badges.length];
+                const s = sentences[i] || `Surveillance scanning active for ${region}. Index ${i + 1} data point captured.`;
+                const text = s.toLowerCase();
+                
+                // Determine priority from content
+                let priority = 'low';
+                if (text.match(/severe|critical|death|fatal|emergency|outbreak|epidemic|mortality|acute/)) priority = 'high';
+                else if (text.match(/surge|spike|cluster|increase|warning|alert|hospital|admitted/)) priority = 'medium';
+                
+                // Trending score: sentences with numbers and strong keywords rank higher
+                const numberCount = (text.match(/\d+/g) || []).length;
+                const strongWords = (text.match(/outbreak|epidemic|surge|spike|death|cases|critical|emergency/g) || []).length;
+                const trendScore = numberCount * 2 + strongWords * 3 + (priority === 'high' ? 5 : priority === 'medium' ? 2 : 0);
 
-                html += `
-                    <div class="osint-item">
-                        <div class="osint-item-icon ${bgCls}">${avatar}</div>
+                const mins = timeOffsets[i % timeOffsets.length];
+                const timeLabel = mins < 60 ? `${mins}m ago` : `${Math.floor(mins / 60)}h ago`;
+
+                osintAllItems.push({
+                    id: i,
+                    title: s.trim(),
+                    avatar: avatars[i % avatars.length],
+                    bgCls: classes[i % classes.length],
+                    source: sources[i % sources.length],
+                    location: locations[i % locations.length],
+                    time: timeLabel,
+                    timeMinutes: mins,
+                    priority,
+                    trendScore,
+                    bookmarked: osintBookmarked.has(i)
+                });
+            }
+
+            osintVisibleCount = 7;
+            osintActiveTab = 'latest';
+            document.getElementById('osint-filter-keywords').value = '';
+            renderOSINTFeedItems();
+        }
+
+        function getFilteredOSINTItems() {
+            let items = [...osintAllItems];
+
+            // Tab filtering
+            if (osintActiveTab === 'trending') {
+                items.sort((a, b) => b.trendScore - a.trendScore);
+            } else if (osintActiveTab === 'high') {
+                items = items.filter(it => it.priority === 'high');
+            } else if (osintActiveTab === 'bookmarked') {
+                items = items.filter(it => osintBookmarked.has(it.id));
+            } else {
+                // Latest — sort by time (newest first, already in order)
+                items.sort((a, b) => a.timeMinutes - b.timeMinutes);
+            }
+
+            // Priority filter checkboxes
+            const checkedPriorities = new Set();
+            document.querySelectorAll('.osint-priority-filter:checked').forEach(cb => checkedPriorities.add(cb.value));
+            if (checkedPriorities.size > 0 && checkedPriorities.size < 3) {
+                items = items.filter(it => checkedPriorities.has(it.priority));
+            }
+
+            // Search filter
+            const query = (document.getElementById('osint-filter-keywords').value || '').toLowerCase();
+            if (query.length > 0) {
+                items = items.filter(it => it.title.toLowerCase().includes(query) || it.source.toLowerCase().includes(query) || it.location.toLowerCase().includes(query));
+            }
+
+            return items;
+        }
+
+        function renderOSINTFeedItems() {
+            const el = document.getElementById('osint-feed-list-container');
+            const filtered = getFilteredOSINTItems();
+            const showing = filtered.slice(0, osintVisibleCount);
+
+            if (showing.length === 0) {
+                el.innerHTML = '<div style="text-align:center; color:#94a3b8; padding:40px 10px;">No matching results found</div>';
+            } else {
+                el.innerHTML = showing.map(item => `
+                    <div class="osint-item" data-priority="${item.priority}" data-id="${item.id}">
+                        <div class="osint-item-icon ${item.bgCls}">${item.avatar}</div>
                         <div class="osint-item-content">
-                            <div class="osint-item-title">${s.trim()}</div>
+                            <div class="osint-item-title">${item.title}</div>
                             <div class="osint-item-meta">
-                                <span>${src}</span>
-                                <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${loc}</span>
+                                <span>${item.source}</span>
+                                <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg> ${item.location}</span>
                             </div>
                         </div>
                         <div class="osint-item-right">
-                            <span class="badge ${badge}">${badge}</span>
-                            <span class="osint-item-time">${time}</span>
-                            <button class="bookmark-btn">☆</button>
+                            <span class="badge ${item.priority}">${item.priority}</span>
+                            <span class="osint-item-time">${item.time}</span>
+                            <button class="bookmark-btn" onclick="toggleOSINTBookmark(${item.id})" title="${osintBookmarked.has(item.id) ? 'Remove bookmark' : 'Bookmark'}">${osintBookmarked.has(item.id) ? '★' : '☆'}</button>
                         </div>
                     </div>
-                `;
+                `).join('');
             }
-            el.innerHTML = html;
-            document.getElementById('osint-pagination-text').textContent = `Showing 1–${loopMax} of 124 results`;
+
+            // Pagination text
+            const total = filtered.length;
+            const shown = Math.min(osintVisibleCount, total);
+            document.getElementById('osint-pagination-text').textContent = total > 0 ? `Showing 1–${shown} of ${total} results` : 'No results';
+
+            // Load More button visibility
+            const loadMoreBtn = document.getElementById('osint-load-more-btn');
+            if (loadMoreBtn) loadMoreBtn.style.display = shown < total ? 'inline-flex' : 'none';
+        }
+
+        function loadMoreOSINT() {
+            osintVisibleCount += 7;
+            renderOSINTFeedItems();
+        }
+
+        function switchOSINTSubtab(tab) {
+            osintActiveTab = tab;
+            osintVisibleCount = 7;
+            document.querySelectorAll('.osint-tab').forEach(t => t.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            renderOSINTFeedItems();
+        }
+
+        function filterOSINTFeedList() {
+            osintVisibleCount = 7;
+            renderOSINTFeedItems();
+        }
+
+        function toggleOSINTBookmark(id) {
+            if (osintBookmarked.has(id)) {
+                osintBookmarked.delete(id);
+            } else {
+                osintBookmarked.add(id);
+            }
+            renderOSINTFeedItems();
+        }
+
+        function toggleOSINTFilters() {
+            const panel = document.getElementById('osint-filter-panel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function applyOSINTFilters() {
+            osintVisibleCount = 7;
+            renderOSINTFeedItems();
         }
 
         function populateReportsTableFromHistory() {
@@ -5194,24 +5324,6 @@
             document.querySelectorAll('.osint-source-card').forEach(c => c.classList.remove('active'));
             event.currentTarget.classList.add('active');
             showToast(`Filtering data sources: ${type}`);
-        }
-
-        function switchOSINTSubtab(tab) {
-            document.querySelectorAll('.osint-tab').forEach(t => t.classList.remove('active'));
-            event.currentTarget.classList.add('active');
-            showToast(`OSINT list sorted by: ${tab}`);
-        }
-
-        function filterOSINTFeedList() {
-            const query = document.getElementById('osint-filter-keywords').value.toLowerCase();
-            document.querySelectorAll('.osint-item').forEach(item => {
-                const title = item.querySelector('.osint-item-title').textContent.toLowerCase();
-                if (title.includes(query)) {
-                    item.style.display = 'flex';
-                } else {
-                    item.style.display = 'none';
-                }
-            });
         }
 
         // ═══════════════════════════════════════════════════════════
