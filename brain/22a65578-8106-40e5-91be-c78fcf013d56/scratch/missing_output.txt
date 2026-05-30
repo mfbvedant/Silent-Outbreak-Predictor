@@ -1,0 +1,98 @@
+class="report-details-metrics">
+                                <div class="report-metric" style="border-right: 1px solid #e2e8f0; padding-right:12px;">
+                                    <span class="lbl">Confidence</span>
+                                    <span class="val" id="reports-latest-conf">ΓÇö</span>
+                                </div>
+                                <div class="report-metric" style="border-right: 1px solid #e2e8f0; padding-right:12px; padding-left:4px;">
+                                    <span class="lbl">Signals</span>
+                                    <span class="val" id="reports-latest-signals">ΓÇö</span>
+                                </div>
+                                <div class="report-metric" style="padding-left:4px;">
+                                    <span class="lbl">Sources</span>
+                                    <span class="val" id="reports-latest-sources">ΓÇö</span>
+                                </div>
+                            </div>
+                            <div class="report-actions">
+                                <button class="control-btn" style="padding:6px 12px; font-size:0.75rem;" onclick="viewFullReport()">View Full Report</button>
+                                <a href="#" class="btn-download" onclick="event.preventDefault(); downloadReportPDF(displayedData);">Download PDF &darr;</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body" id="reports-latest-empty" style="text-align:center; padding:40px; color:#94a3b8; font-size:0.85rem;">
+                        No report generated yet. Run an analysis surveillance scan to compile.
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-header-left">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            <h3>Risk Summary</h3>
+                        </div>
+                        <div class="control-dropdown" style="padding:4px 8px; font-size:0.7rem; border-radius:6px;">
+                            <span>By Day</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="chart-box" style="height: 180px;">
+                            <canvas id="chart-reports-summary"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Table -->
+            <div class="reports-table-card">
+                <div class="table-toolbar">
+                    <h3 style="font-size:0.85rem; font-weight:700; color:#334155; text-transform:uppercase;">All Reports</h3>
+                    <div style="display:flex; gap:10px;">
+                        <div class="table-search-wrap">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <input type="text" class="table-search-input" placeholder="Search reports..." />
+                        </div>
+                        <button class="filter-btn" style="padding: 6px 12px; font-size: 0.78rem;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                            Filters
+                        </button>
+                    </div>
+                </div>
+
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Report Name</th>
+                            <th>Region</th>
+                            <th>Date Range</th>
+                            <th>Risk Level</th>
+                            <th>Confidence</th>
+                            <th>Signals</th>
+                            <th>Sources</th>
+                            <th>Generated On</th>
+                            <th style="text-align:right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reports-table-body">
+                        <!-- Generated Dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           VIEW 6: Settings
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ -->
+        <div class="view-page" id="view-settings">
+            <!-- Settings subtabs -->
+            <div class="settings-subtabs">
+                <button class="settings-subtab active" onclick="switchSettingsTab('general', this)">General</button>
+                <button class="settings-subtab" onclick="switchSettingsTab('sources', this)">Data Sources</button>
+                <button class="settings-subtab" onclick="switchSettingsTab('notifications', this)">Notifications</button>
+                <button class="settings-subtab" onclick="switchSettingsTab('pipeline', this)">Pipeline</button>
+                <button class="settings-subtab" onclick="switchSettingsTab('account', this)">Account</button>
+            </div>
+
+            <!-- Settings layout -->
+            <div class="settings-grid">
+                
+                
